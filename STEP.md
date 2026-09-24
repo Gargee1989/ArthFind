@@ -10,7 +10,7 @@ All commands below should be run from the repository root:
 /Users/rajuram/Desktop/ContentCore
 ```
 
-In a terminal:
+In a terminal: 
 
 ```bash
 cd /Users/rajuram/Desktop/ContentCore
