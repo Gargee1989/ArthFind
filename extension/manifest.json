@@ -19,11 +19,11 @@
 	],
 	"content_security_policy": {
 		"extension_pages": "script-src 'self'; object-src 'self'"
-	}
+	},
 	"web_accessible_resources": [
-    {
-      "resources": ["themes.css", "card.css"],
-      "matches": ["<all_urls>"]
-    }
-  ]
+		{
+			"resources": ["bg-1.jpg", "bg-2.jpg", "bg-3.jpg", "bg-4.jpg", "bg-5.jpg"],
+			"matches": ["<all_urls>"]
+		}
+	]
 }

@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Word Card</title>
+<style>
+  :root{
+    --ink: #26264a;
+    --ink-soft: #6b6b8f;
+    --accent: #4b4fd1;
+    --accent-soft: #eceafc;
+    --paper: #fbfaff;
+    --line: #e3e1f5;
+  }
+
+  * { box-sizing: border-box; }
+
+  body{
+    margin:0;
+    min-height:100vh;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background: #e9e8ee;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+
+  .word-card{
+    width: 300px;
+    background: var(--paper);
+    border-radius: 20px;
+    box-shadow: 0 1px 2px rgba(38,38,74,0.04), 0 12px 28px rgba(38,38,74,0.10);
+    border: 1px solid var(--line);
+    overflow: hidden;
+  }
+
+  .word-card__body{
+    padding: 26px 24px 20px;
+  }
+
+  .word-card__head{
+    display:flex;
+    align-items: baseline;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .word-card__word{
+    font-family: 'Georgia', 'Iowan Old Style', serif;
+    font-size: 26px;
+    font-weight: 700;
+    color: var(--ink);
+    letter-spacing: -0.01em;
+  }
+
+  .word-card__pos{
+    font-size: 12px;
+    font-style: italic;
+    color: var(--accent);
+    background: var(--accent-soft);
+    padding: 2px 9px;
+    border-radius: 20px;
+  }
+
+  .word-card__phonetic{
+    margin-top: 4px;
+    font-size: 14px;
+    color: var(--ink-soft);
+    font-family: 'Times New Roman', serif;
+  }
+
+  .word-card__definition{
+    margin: 14px 0 0;
+    font-size: 14.5px;
+    line-height: 1.5;
+    color: var(--ink);
+  }
+
+  .word-card__example{
+    margin: 8px 0 0;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--ink-soft);
+    font-style: italic;
+  }
+
+  .word-card__icons{
+    display:flex;
+    align-items:center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    border-top: 1px solid var(--line);
+    background: var(--accent-soft);
+  }
+
+  .word-card__btn{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    color: var(--accent);
+    transition: background .15s ease, transform .1s ease;
+  }
+
+  .word-card__btn:hover{
+    background: rgba(75,79,209,0.12);
+  }
+
+  .word-card__btn:active{
+    transform: scale(0.94);
+  }
+
+  .word-card__btn svg{
+    width: 20px;
+    height: 20px;
+  }
+
+  .word-card__btn[data-active="true"]{
+    color: #fff;
+    background: var(--accent);
+  }
+
+  .word-card__toast{
+    position:absolute;
+    left:50%;
+    bottom: 14px;
+    transform: translateX(-50%) translateY(6px);
+    background: var(--ink);
+    color: #fff;
+    font-size: 12px;
+    padding: 5px 11px;
+    border-radius: 20px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .15s ease, transform .15s ease;
+    white-space: nowrap;
+  }
+
+  .word-card{ position: relative; }
+
+  .word-card__toast[data-show="true"]{
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+</style>
+</head>
+<body>
+
+  <div class="word-card">
+    <div class="word-card__body">
+      <div class="word-card__head">
+        <span class="word-card__word">lorem</span>
+        <span class="word-card__pos">adjective</span>
+      </div>
+      <p class="word-card__phonetic">/ˈlɔː.rəm/</p>
+      <p class="word-card__definition">Placeholder text used to preview layout and typography before real content is written.</p>
+      <p class="word-card__example">"The designer dropped in lorem text to test the heading size."</p>
+    </div>
+
+    <div class="word-card__icons">
+      <button class="word-card__btn" data-action="pronounce" aria-label="Pronounce word" title="Pronounce">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+          <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+          <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
+        </svg>
+      </button>
+
+      <button class="word-card__btn" data-action="save" aria-label="Save word" title="Save">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path>
+        </svg>
+      </button>
+
+      <button class="word-card__btn" data-action="copy" aria-label="Copy definition" title="Copy">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+        </svg>
+      </button>
+    </div>
+
+    <div class="word-card__toast" data-show="false">Copied</div>
+  </div>
+
+<script>
+  const card = document.querySelector('.word-card');
+  const word = card.querySelector('.word-card__word').textContent;
+  const definition = card.querySelector('.word-card__definition').textContent;
+  const toast = card.querySelector('.word-card__toast');
+  const saveBtn = card.querySelector('[data-action="save"]');
+
+  function showToast(msg){
+    toast.textContent = msg;
+    toast.dataset.show = "true";
+    setTimeout(() => toast.dataset.show = "false", 1200);
+  }
+
+  card.querySelector('[data-action="pronounce"]').addEventListener('click', () => {
+    if ('speechSynthesis' in window){
+      const utter = new SpeechSynthesisUtterance(word);
+      utter.rate = 0.9;
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(utter);
+    }
+  });
+
+  saveBtn.addEventListener('click', () => {
+    const active = saveBtn.dataset.active === "true";
+    saveBtn.dataset.active = active ? "false" : "true";
+    showToast(active ? "Removed" : "Saved");
+  });
+
+  card.querySelector('[data-action="copy"]').addEventListener('click', async () => {
+    try{
+      await navigator.clipboard.writeText(definition);
+      showToast("Copied");
+    }catch(e){
+      showToast("Copy failed");
+    }
+  });
+</script>
+
+</body>
+</html>

@@ -54,6 +54,7 @@
 	let currentTone = "";
 	let currentSynonym = "";
 	let floatingPillContainer = null;
+	let pillRemovalTimer = null;
 	let savedRange = null;
 
 	// In-PDF Search State
@@ -61,6 +62,117 @@
 	let activeFindIndex = -1;
 
 	const clean = (value) => String(value || "").replace(/\s+/g, " ").trim();
+
+	// Theme module — applies contentCoreTheme to html[data-theme]
+	let _lastAppliedTheme = null;
+	function applyTheme(themeId) {
+		const id = themeId || "warm-calm";
+		if (_lastAppliedTheme === id) return;
+		_lastAppliedTheme = id;
+		document.documentElement.dataset.theme = id;
+	}
+
+	chrome.storage.local.get({ contentCoreTheme: "warm-calm" }, ({ contentCoreTheme }) => {
+		applyTheme(contentCoreTheme);
+	});
+
+	chrome.storage.onChanged.addListener((changes, area) => {
+		if (area === "local" && changes.contentCoreTheme) {
+			applyTheme(changes.contentCoreTheme.newValue);
+			refreshTbSwatches();
+		}
+	});
+
+	// Toolbar theme picker
+	const tbThemeBtn = document.querySelector("#tb-theme-btn");
+	const tbThemePanel = document.querySelector("#tb-theme-panel");
+	const tbThemeSwatches = document.querySelectorAll(".tb-theme-swatch");
+
+	function refreshTbSwatches() {
+		const current = _lastAppliedTheme || "warm-calm";
+		tbThemeSwatches.forEach((s) => {
+			s.dataset.active = String(s.dataset.themeId === current);
+		});
+		tbThemeBtn?.classList.toggle("active", tbThemePanel?.classList.contains("open"));
+	}
+
+	tbThemeBtn?.addEventListener("click", (e) => {
+		e.stopPropagation();
+		const isOpen = tbThemePanel.classList.toggle("open");
+		tbThemeBtn.classList.toggle("active", isOpen);
+		if (isOpen) refreshTbSwatches();
+	});
+
+	tbThemeSwatches.forEach((swatch) => {
+		// Hover — temporary preview, does NOT update _lastAppliedTheme
+		swatch.addEventListener("mouseenter", () => {
+			document.documentElement.dataset.theme = swatch.dataset.themeId;
+		});
+		swatch.addEventListener("mouseleave", () => {
+			document.documentElement.dataset.theme = _lastAppliedTheme || "warm-calm";
+		});
+
+		// Click — commit permanently
+		swatch.addEventListener("click", (e) => {
+			e.stopPropagation();
+			const chosen = swatch.dataset.themeId;
+			chrome.storage.local.set({ contentCoreTheme: chosen });
+			_lastAppliedTheme = chosen;
+			document.documentElement.dataset.theme = chosen;
+			refreshTbSwatches();
+			tbThemePanel.classList.remove("open");
+			tbThemeBtn.classList.remove("active");
+		});
+	});
+
+	document.addEventListener("mousedown", (e) => {
+		if (tbThemePanel && !tbThemeBtn.contains(e.target) && !tbThemePanel.contains(e.target)) {
+			tbThemePanel.classList.remove("open");
+			tbThemeBtn.classList.remove("active");
+		}
+	});
+
+	// Toolbar background image picker
+	const tbBgSwatches = document.querySelectorAll(".tb-bg-swatch");
+	let currentBg = "none";
+
+	function applyBg(bgFile) {
+		currentBg = bgFile || "none";
+		if (currentBg === "none") {
+			document.body.style.backgroundImage = "";
+			document.body.classList.remove("has-bg-image");
+			renderTarget.classList.remove("has-bg-image");
+		} else {
+			const url = `url('${chrome.runtime.getURL(currentBg)}')`;
+			document.body.style.backgroundImage = url;
+			document.body.classList.add("has-bg-image");
+			renderTarget.classList.remove("has-bg-image");
+		}
+		tbBgSwatches.forEach((s) => {
+			s.dataset.active = String(s.dataset.bg === currentBg);
+		});
+	}
+
+	// Set correct full extension URLs on the thumbnail swatches
+	tbBgSwatches.forEach((swatch) => {
+		const bg = swatch.dataset.bg;
+		if (bg && bg !== "none") {
+			swatch.style.backgroundImage = `url('${chrome.runtime.getURL(bg)}')`;
+		}
+	});
+
+	chrome.storage.local.get({ contentCoreBg: "none" }, ({ contentCoreBg }) => {
+		applyBg(contentCoreBg);
+	});
+
+	tbBgSwatches.forEach((swatch) => {
+		swatch.addEventListener("click", (e) => {
+			e.stopPropagation();
+			const chosen = swatch.dataset.bg;
+			chrome.storage.local.set({ contentCoreBg: chosen });
+			applyBg(chosen);
+		});
+	});
 
 	// Toast Helper
 	let toastTimer = null;
@@ -116,6 +228,8 @@
 
 	// Remove Floating Pill & Dropdown
 	function removeFloatingPill() {
+		clearTimeout(pillRemovalTimer);
+		pillRemovalTimer = null;
 		floatingPillContainer?.remove();
 		floatingPillContainer = null;
 		savedRange = null;
@@ -225,6 +339,11 @@
 				}
 				const highlightBtn = floatingPillContainer?.querySelector('[data-action="highlight"]');
 				highlightBtn?.classList.add("active");
+				// Pointer highlight animation on first applied mark
+				const firstMark = range.commonAncestorContainer.nodeType === Node.ELEMENT_NODE
+					? range.commonAncestorContainer.querySelector(".cc-pdf-highlight")
+					: range.startContainer.parentElement?.closest(".cc-pdf-highlight");
+				if (firstMark) showPointerHighlight(firstMark);
 				showToast("Highlighted");
 			} catch (e) {
 				console.error("[ContentCore] Highlight error:", e);
@@ -233,7 +352,8 @@
 
 		// Clear selection after action
 		window.getSelection()?.removeAllRanges();
-		setTimeout(removeFloatingPill, 400);
+		clearTimeout(pillRemovalTimer);
+		pillRemovalTimer = setTimeout(removeFloatingPill, 400);
 	}
 
 	// Save to chrome.storage.local
@@ -277,25 +397,46 @@
 		}
 	}
 
-	function renderCardError(cardBody, title, desc, hint = "") {
-		cardBody.innerHTML = `
+	function renderCardError(cardContent, title, desc, hint = "") {
+		cardContent.innerHTML = `
 			<div class="cc-card-error-container">
-				<div class="cc-error-header">
-					<svg class="cc-error-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-						<circle cx="12" cy="12" r="10"></circle>
-						<line x1="12" y1="8" x2="12" y2="12"></line>
-						<line x1="12" y1="16" x2="12.01" y2="16"></line>
-					</svg>
-					<span class="cc-error-title">${escapeHtml(title)}</span>
-				</div>
+				<div class="cc-error-title">${escapeHtml(title)}</div>
 				<div class="cc-error-desc">${escapeHtml(desc)}</div>
 				${hint ? `<div class="cc-error-hint">${escapeHtml(hint)}</div>` : ""}
 			</div>
 		`;
 	}
 
+	function renderCardDefinition(cardContent, meaning, tone, synonym) {
+		let metaHtml = "";
+		if (tone || synonym) {
+			metaHtml = `<div class="cc-card-meta">`;
+			if (tone) {
+				metaHtml += `
+					<div class="cc-card-meta-row">
+						<span class="cc-meta-badge">Tone:</span>
+						<span class="cc-meta-value">${escapeHtml(tone)}</span>
+					</div>
+				`;
+			}
+			if (synonym) {
+				metaHtml += `
+					<div class="cc-card-meta-row">
+						<span class="cc-meta-badge">Synonym:</span>
+						<span class="cc-meta-value">${escapeHtml(synonym)}</span>
+					</div>
+				`;
+			}
+			metaHtml += `</div>`;
+		}
+		cardContent.innerHTML = `
+			<div class="cc-card-definition">${escapeHtml(meaning)}</div>
+			${metaHtml}
+		`;
+	}
+
 	// Explain This - Call /define API
-	async function explainWord(cardBody) {
+	async function explainWord(cardContent) {
 		let settings;
 		try {
 			settings = await ContentCoreCrypto.readSettings();
@@ -310,7 +451,7 @@
 
 		if (!hasCredential) {
 			renderCardError(
-				cardBody,
+				cardContent,
 				"API Key Setup Required",
 				"Please configure your AI provider (Google Gemini, OpenAI, or NVIDIA NIM) in the ContentCore extension settings to get word definitions.",
 				"Click the ContentCore icon in your browser toolbar to enter your key."
@@ -320,17 +461,19 @@
 
 		if (typeof navigator !== "undefined" && navigator.onLine === false) {
 			renderCardError(
-				cardBody,
+				cardContent,
 				"No Internet Connection",
 				"Your device appears to be offline. Please check your network and try again."
 			);
 			return;
 		}
 
-		cardBody.innerHTML = `
-			<div class="cc-card-loading">
-				<div class="cc-card-spinner"></div>
-				<span>Getting explanation...</span>
+		cardContent.innerHTML = `
+			<div class="cc-shimmer-wrap">
+				<div class="cc-shimmer-line full"></div>
+				<div class="cc-shimmer-line long"></div>
+				<div class="cc-shimmer-line mid"></div>
+				<div class="cc-shimmer-line short"></div>
 			</div>
 		`;
 
@@ -354,17 +497,9 @@
 				});
 			} catch (networkError) {
 				if (typeof navigator !== "undefined" && navigator.onLine === false) {
-					renderCardError(
-						cardBody,
-						"No Internet Connection",
-						"Your device appears to be offline. Please check your network and try again."
-					);
+					renderCardError(cardContent, "No Internet Connection", "Your device appears to be offline. Please check your network and try again.");
 				} else {
-					renderCardError(
-						cardBody,
-						"Connection Failed",
-						"Could not connect to the ContentCore backend. Please ensure the backend server is running on port 8000."
-					);
+					renderCardError(cardContent, "Connection Failed", "Could not connect to the ContentCore backend. Please ensure the backend server is running on port 8000.");
 				}
 				return;
 			}
@@ -377,82 +512,35 @@
 					const message = errorData.message || errorData.detail || "";
 					if (response.status === 400) {
 						const lower = message.toLowerCase();
-						if (lower.includes("key") || lower.includes("credential") || lower.includes("auth") || lower.includes("token")) {
-							errTitle = "Invalid API Key";
-						} else {
-							errTitle = "Invalid Request";
-						}
+						errTitle = (lower.includes("key") || lower.includes("credential") || lower.includes("auth") || lower.includes("token")) ? "Invalid API Key" : "Invalid Request";
 						errDesc = message || "Please check your settings or selected text.";
-					} else if (response.status === 429) {
-						errTitle = "Rate Limit Exceeded";
-						errDesc = message || "Too many requests. Please wait a moment before trying again.";
-					} else if (response.status === 504) {
-						errTitle = "Request Timed Out";
-						errDesc = message || "The AI provider took too long to respond. Please try again.";
-					} else if (response.status === 503) {
-						errTitle = "Service Unavailable";
-						errDesc = message || "The definition service is temporarily unavailable. Please try again later.";
-					} else {
-						errDesc = message || errDesc;
-					}
+					} else if (response.status === 429) { errTitle = "Rate Limit Exceeded"; errDesc = message || "Too many requests. Please wait a moment before trying again."; }
+					else if (response.status === 504) { errTitle = "Request Timed Out"; errDesc = message || "The AI provider took too long to respond. Please try again."; }
+					else if (response.status === 503) { errTitle = "Service Unavailable"; errDesc = message || "The definition service is temporarily unavailable. Please try again later."; }
+					else { errDesc = message || errDesc; }
 				} catch {
-					if (response.status === 429) {
-						errTitle = "Rate Limit Exceeded";
-						errDesc = "Too many requests. Please wait a moment before trying again.";
-					} else if (response.status === 504) {
-						errTitle = "Request Timed Out";
-						errDesc = "The AI provider took too long to respond. Please try again.";
-					} else if (response.status === 503) {
-						errTitle = "Service Unavailable";
-						errDesc = "The definition service is temporarily unavailable. Please try again later.";
-					}
+					if (response.status === 429) { errTitle = "Rate Limit Exceeded"; errDesc = "Too many requests. Please wait a moment before trying again."; }
+					else if (response.status === 504) { errTitle = "Request Timed Out"; errDesc = "The AI provider took too long to respond. Please try again."; }
+					else if (response.status === 503) { errTitle = "Service Unavailable"; errDesc = "The definition service is temporarily unavailable. Please try again later."; }
 				}
-				renderCardError(cardBody, errTitle, errDesc);
+				renderCardError(cardContent, errTitle, errDesc);
 				return;
 			}
 
 			const result = await response.json();
-			const meaning = clean(
-				String(result.meaning || result.definition || result.explanation || result.answer || "")
-			);
+			const meaning = clean(String(result.meaning || result.definition || result.explanation || result.answer || ""));
 
 			if (!meaning || meaning === "No definition") {
-				renderCardError(cardBody, "No Definition", "The AI provider did not return an explanation for this selection.");
+				renderCardError(cardContent, "No Definition", "The AI provider did not return an explanation for this selection.");
 				return;
 			}
 
 			currentDefinition = meaning;
 			currentTone = clean(String(result.tone || ""));
 			currentSynonym = clean(String(result.synonym || ""));
-
-			let metaHtml = "";
-			if (currentTone || currentSynonym) {
-				metaHtml = `<div class="cc-card-meta">`;
-				if (currentTone) {
-					metaHtml += `
-						<div class="cc-card-meta-row">
-							<span class="cc-meta-badge">Tone:</span>
-							<span class="cc-meta-value">${escapeHtml(currentTone)}</span>
-						</div>
-					`;
-				}
-				if (currentSynonym) {
-					metaHtml += `
-						<div class="cc-card-meta-row">
-							<span class="cc-meta-badge">Synonym:</span>
-							<span class="cc-meta-value">${escapeHtml(currentSynonym)}</span>
-						</div>
-					`;
-				}
-				metaHtml += `</div>`;
-			}
-
-			cardBody.innerHTML = `
-				<div class="cc-card-definition">${escapeHtml(meaning)}</div>
-				${metaHtml}
-			`;
+			renderCardDefinition(cardContent, currentDefinition, currentTone, currentSynonym);
 		} catch (error) {
-			renderCardError(cardBody, "Error", error.message || "Definition service unavailable.");
+			renderCardError(cardContent, "Error", error.message || "Definition service unavailable.");
 		}
 	}
 
@@ -460,6 +548,149 @@
 		const div = document.createElement("div");
 		div.textContent = text || "";
 		return div.innerHTML;
+	}
+
+	// Pointer-only highlight — animated border+cursor, no persistent mark
+	function doPointerHighlight() {
+		const range = savedRange || (window.getSelection()?.rangeCount ? window.getSelection().getRangeAt(0) : null);
+		if (!range) return;
+
+		// Collect existing marks to support toggle-off
+		const startParent = range.startContainer.nodeType === Node.ELEMENT_NODE
+			? range.startContainer : range.startContainer.parentElement;
+		const endParent = range.endContainer.nodeType === Node.ELEMENT_NODE
+			? range.endContainer : range.endContainer.parentElement;
+		const existingMarks = new Set();
+		const m1 = startParent?.closest(".cc-pdf-highlight");
+		const m2 = endParent?.closest(".cc-pdf-highlight");
+		if (m1) existingMarks.add(m1);
+		if (m2) existingMarks.add(m2);
+		if (range.commonAncestorContainer.nodeType === Node.ELEMENT_NODE) {
+			const m3 = range.commonAncestorContainer.closest(".cc-pdf-highlight");
+			if (m3) existingMarks.add(m3);
+			range.commonAncestorContainer.querySelectorAll(".cc-pdf-highlight").forEach((el) => {
+				if (range.intersectsNode(el)) existingMarks.add(el);
+			});
+		}
+
+		if (existingMarks.size > 0) {
+			existingMarks.forEach((mark) => unwrapHighlight(mark));
+			document.querySelectorAll(".cc-pointer-highlight-overlay").forEach((el) => el.remove());
+			const highlightBtn = floatingPillContainer?.querySelector('[data-action="highlight"]');
+			highlightBtn?.classList.remove("active");
+			window.getSelection()?.removeAllRanges();
+			clearTimeout(pillRemovalTimer);
+			pillRemovalTimer = setTimeout(removeFloatingPill, 400);
+			return;
+		}
+
+		const createdMarks = [];
+		try {
+			if (range.startContainer === range.endContainer && range.startContainer.nodeType === Node.TEXT_NODE) {
+				const mark = document.createElement("mark");
+				mark.className = "cc-pdf-highlight cc-pointer-only";
+				range.surroundContents(mark);
+				createdMarks.push(mark);
+			} else {
+				const walker = document.createTreeWalker(range.commonAncestorContainer, NodeFilter.SHOW_TEXT, {
+					acceptNode: (node) => range.intersectsNode(node) && node.textContent.trim()
+						? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT
+				});
+				const nodes = [];
+				while (walker.nextNode()) nodes.push(walker.currentNode);
+				for (const node of nodes) {
+					if (node.parentElement?.closest(".cc-pdf-highlight")) continue;
+					const nr = document.createRange();
+					if (node === range.startContainer) { nr.setStart(node, range.startOffset); nr.setEnd(node, node.length); }
+					else if (node === range.endContainer) { nr.setStart(node, 0); nr.setEnd(node, range.endOffset); }
+					else nr.selectNodeContents(node);
+					if (!nr.collapsed) {
+						const mark = document.createElement("mark");
+						mark.className = "cc-pdf-highlight cc-pointer-only";
+						nr.surroundContents(mark);
+						createdMarks.push(mark);
+					}
+				}
+			}
+		} catch (e) {
+			console.error("[ContentCore] Pointer highlight error:", e);
+		}
+
+		if (createdMarks.length > 0) {
+			// Defer so marks are laid out before measuring
+			requestAnimationFrame(() => {
+				showPointerHighlight(createdMarks);
+				const highlightBtn = floatingPillContainer?.querySelector('[data-action="highlight"]');
+				highlightBtn?.classList.add("active");
+			});
+		}
+
+		window.getSelection()?.removeAllRanges();
+		clearTimeout(pillRemovalTimer);
+		pillRemovalTimer = setTimeout(removeFloatingPill, 400);
+	}
+
+	// Pointer highlight animation — one overlay per mark, all persist until next call
+	function showPointerHighlight(marks) {
+		// Remove previous overlays
+		document.querySelectorAll(".cc-pointer-highlight-overlay").forEach((el) => el.remove());
+
+		// Read accent from the live CSS variable (set by applyTheme), fall back to map
+		const accentMap = {
+			"warm-calm":          "#b17a57",
+			"fresh-calm":         "#6b8f71",
+			"soft-natural":       "#4a90a4",
+			"warm-friendly":      "#d9825b",
+			"warm-calm-dark":     "#c08b63",
+			"fresh-calm-dark":    "#7fa987",
+			"soft-natural-dark":  "#5fa7bc",
+			"warm-friendly-dark": "#d9825b",
+		};
+
+		const cssAccent = getComputedStyle(document.documentElement).getPropertyValue("--cc-accent").trim();
+		const currentThemeId = document.documentElement.dataset.theme || "warm-calm";
+		const accent = cssAccent || accentMap[currentThemeId] || "#4a90a4";
+
+		// #pdf-render is the scroll container — use its scroll offsets
+		const scrollEl = document.querySelector("#pdf-render");
+		const scrollTop = scrollEl ? scrollEl.scrollTop : window.scrollY;
+		const scrollLeft = scrollEl ? scrollEl.scrollLeft : window.scrollX;
+		const containerRect = scrollEl ? scrollEl.getBoundingClientRect() : { top: 0, left: 0 };
+
+		for (const markEl of Array.isArray(marks) ? marks : [marks]) {
+			const rect = markEl.getBoundingClientRect();
+			if (!rect.width || !rect.height) continue;
+
+			const overlay = document.createElement("div");
+			overlay.className = "cc-pointer-highlight-overlay";
+			overlay.style.cssText = `
+				position: absolute;
+				pointer-events: none;
+				z-index: 999;
+				left: ${rect.left - containerRect.left + scrollLeft}px;
+				top: ${rect.top - containerRect.top + scrollTop}px;
+				width: ${rect.width}px;
+				height: ${rect.height}px;
+			`;
+
+			const border = document.createElement("div");
+			border.className = "cc-pointer-border";
+			border.style.borderColor = accent;
+
+			const pointer = document.createElement("div");
+			pointer.className = "cc-pointer-cursor";
+			pointer.style.cssText = `left: ${rect.width + 4}px; top: ${rect.height + 4}px; color: ${accent};`;
+			pointer.innerHTML = `<svg stroke="currentColor" fill="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 16 16" height="100%" width="100%" xmlns="http://www.w3.org/2000/svg"><path d="M14.082 2.182a.5.5 0 0 1 .103.557L8.528 15.467a.5.5 0 0 1-.917-.007L5.57 10.694.803 8.652a.5.5 0 0 1-.006-.916l12.728-5.657a.5.5 0 0 1 .556.103z"></path></svg>`;
+
+			overlay.appendChild(border);
+			overlay.appendChild(pointer);
+
+			if (scrollEl) {
+				scrollEl.appendChild(overlay);
+			} else {
+				document.documentElement.appendChild(overlay);
+			}
+		}
 	}
 
 	// Show Compact Floating Selection Toolbar
@@ -497,13 +728,37 @@
 			<div class="cc-floating-pill">
 				<button type="button" class="cc-explain-btn" data-action="explain">Explain this</button>
 				<div class="cc-pill-separator"></div>
-				<button type="button" class="cc-pill-icon-btn ${isHighlighted ? "active" : ""}" data-action="highlight" title="Highlight text" aria-label="Highlight text">
-					<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
-						<path d="m9 11-6 6v3h3l6-6"/>
-						<path d="m22 7-4.5-4.5a2.12 2.12 0 0 0-3 0l-4.5 4.5 7.5 7.5 4.5-4.5a2.12 2.12 0 0 0 0-3Z"/>
-						<line x1="14.5" y1="5.5" x2="18.5" y2="9.5"/>
-					</svg>
-				</button>
+				<div class="cc-highlight-group">
+					<button type="button" class="cc-pill-icon-btn ${isHighlighted ? "active" : ""}" data-action="highlight" title="Highlight" aria-label="Highlight text">
+						<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+							<path d="m9 11-6 6v3h3l6-6"/>
+							<path d="m22 7-4.5-4.5a2.12 2.12 0 0 0-3 0l-4.5 4.5 7.5 7.5 4.5-4.5a2.12 2.12 0 0 0 0-3Z"/>
+							<line x1="14.5" y1="5.5" x2="18.5" y2="9.5"/>
+						</svg>
+					</button>
+					<button type="button" class="cc-highlight-chevron" data-action="highlight-mode" title="Choose highlight style" aria-label="Choose highlight style">
+						<svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+							<polyline points="6 9 12 15 18 9"/>
+						</svg>
+					</button>
+					<div class="cc-highlight-mode-panel" id="cc-highlight-mode-panel">
+						<div class="cc-highlight-mode-label">Highlight style</div>
+						<button class="cc-highlight-mode-btn" data-mode="traditional">
+							<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+								<path d="m9 11-6 6v3h3l6-6"/>
+								<path d="m22 7-4.5-4.5a2.12 2.12 0 0 0-3 0l-4.5 4.5 7.5 7.5 4.5-4.5a2.12 2.12 0 0 0 0-3Z"/>
+								<line x1="14.5" y1="5.5" x2="18.5" y2="9.5"/>
+							</svg>
+							Traditional
+						</button>
+						<button class="cc-highlight-mode-btn" data-mode="pointer">
+							<svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" stroke="none" xmlns="http://www.w3.org/2000/svg">
+								<path d="M14.082 2.182a.5.5 0 0 1 .103.557L8.528 15.467a.5.5 0 0 1-.917-.007L5.57 10.694.803 8.652a.5.5 0 0 1-.006-.916l12.728-5.657a.5.5 0 0 1 .556.103z"/>
+							</svg>
+							Pointer highlight
+						</button>
+					</div>
+				</div>
 				<button type="button" class="cc-pill-icon-btn" data-action="save" title="Save word" aria-label="Save word">
 					<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
 						<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
@@ -512,6 +767,42 @@
 						<line x1="16" y1="17" x2="8" y2="17"/>
 						<polyline points="10 9 9 9 8 9"/>
 					</svg>
+				</button>
+				<div class="cc-pill-separator"></div>
+				<button type="button" class="cc-pill-icon-btn" data-action="theme" title="Change theme" aria-label="Change theme">
+					<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+						<circle cx="12" cy="12" r="10"/>
+						<path d="M12 2a10 10 0 0 1 0 20"/>
+						<circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/>
+					</svg>
+				</button>
+			</div>
+			<div class="cc-theme-panel" id="cc-theme-panel">
+				<div class="cc-theme-panel-label">Theme</div>
+				<button class="cc-theme-swatch" data-theme-id="warm-calm">
+					<span class="cc-theme-dot" style="background:#b17a57"></span>Warm Calm
+				</button>
+				<button class="cc-theme-swatch" data-theme-id="fresh-calm">
+					<span class="cc-theme-dot" style="background:#6b8f71"></span>Fresh Calm
+				</button>
+				<button class="cc-theme-swatch" data-theme-id="soft-natural">
+					<span class="cc-theme-dot" style="background:#4a90a4"></span>Soft Natural
+				</button>
+				<button class="cc-theme-swatch" data-theme-id="warm-friendly">
+					<span class="cc-theme-dot" style="background:#d9825b"></span>Warm Friendly
+				</button>
+				<div class="cc-theme-divider"></div>
+				<button class="cc-theme-swatch" data-theme-id="warm-calm-dark">
+					<span class="cc-theme-dot" style="background:#c08b63"></span>Warm Dark
+				</button>
+				<button class="cc-theme-swatch" data-theme-id="fresh-calm-dark">
+					<span class="cc-theme-dot" style="background:#7fa987"></span>Fresh Dark
+				</button>
+				<button class="cc-theme-swatch" data-theme-id="soft-natural-dark">
+					<span class="cc-theme-dot" style="background:#5fa7bc"></span>Soft Dark
+				</button>
+				<button class="cc-theme-swatch" data-theme-id="warm-friendly-dark">
+					<span class="cc-theme-dot" style="background:#d9825b"></span>Warm Friendly Dark
 				</button>
 			</div>
 		`;
@@ -545,6 +836,49 @@
 		const explainBtn = floatingPillContainer.querySelector('[data-action="explain"]');
 		const highlightBtn = floatingPillContainer.querySelector('[data-action="highlight"]');
 		const saveBtn = floatingPillContainer.querySelector('[data-action="save"]');
+		const highlightChevron = floatingPillContainer.querySelector('[data-action="highlight-mode"]');
+		const highlightModePanel = floatingPillContainer.querySelector("#cc-highlight-mode-panel");
+		const highlightModeBtns = floatingPillContainer.querySelectorAll(".cc-highlight-mode-btn");
+
+		// Load persisted mode
+		let highlightMode = "traditional";
+		chrome.storage.local.get({ contentCoreHighlightMode: "traditional" }, ({ contentCoreHighlightMode }) => {
+			highlightMode = contentCoreHighlightMode;
+			highlightModeBtns.forEach(b => { b.dataset.active = String(b.dataset.mode === highlightMode); });
+		});
+
+		highlightBtn.addEventListener("click", () => {
+			if (highlightMode === "pointer") {
+				doPointerHighlight();
+			} else {
+				toggleHighlight();
+			}
+		});
+
+		highlightChevron.addEventListener("click", (e) => {
+			e.stopPropagation();
+			highlightModePanel.classList.toggle("open");
+		});
+
+		highlightModeBtns.forEach((btn) => {
+			btn.addEventListener("click", (e) => {
+				e.stopPropagation();
+				highlightMode = btn.dataset.mode;
+				chrome.storage.local.set({ contentCoreHighlightMode: highlightMode });
+				highlightModeBtns.forEach(b => { b.dataset.active = String(b.dataset.mode === highlightMode); });
+				highlightModePanel.classList.remove("open");
+				if (highlightMode === "pointer") {
+					doPointerHighlight();
+				} else {
+					toggleHighlight();
+				}
+			});
+		});
+
+		document.addEventListener("mousedown", () => {
+			highlightModePanel?.classList.remove("open");
+			themePanel?.classList.remove("open");
+		}, { capture: true, once: false });
 
 		explainBtn.addEventListener("click", () => {
 			// If dropdown card already open, toggle it off
@@ -556,19 +890,128 @@
 			const card = document.createElement("div");
 			card.className = "cc-dropdown-card";
 			card.innerHTML = `
-				<div class="cc-card-header">
-					<span class="cc-card-word">${escapeHtml(selectedText)}</span>
-					<button type="button" class="cc-card-close" aria-label="Close">&times;</button>
+				<div class="cc-card-body">
+					<div class="cc-card-head">
+						<span class="cc-card-word">${escapeHtml(selectedText)}</span>
+						<button type="button" class="cc-card-close" aria-label="Close">&times;</button>
+					</div>
+					<div class="cc-card-content"></div>
 				</div>
-				<div class="cc-card-body"></div>
+				<div class="cc-card-footer">
+					<button type="button" class="cc-card-btn" data-action="pronounce" aria-label="Pronounce word" title="Pronounce">
+						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+							<path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+							<path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
+						</svg>
+					</button>
+					<button type="button" class="cc-card-btn" data-action="card-save" aria-label="Save word" title="Save">
+						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path>
+						</svg>
+					</button>
+					<button type="button" class="cc-card-btn" data-action="copy" aria-label="Copy definition" title="Copy">
+						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+							<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+						</svg>
+					</button>
+				</div>
+				<div class="cc-card-toast" data-show="false"></div>
 			`;
+
 			card.querySelector(".cc-card-close").addEventListener("click", removeFloatingPill);
+
+			// Toast helper
+			const cardToast = card.querySelector(".cc-card-toast");
+			function showCardToast(msg) {
+				cardToast.textContent = msg;
+				cardToast.dataset.show = "true";
+				setTimeout(() => { cardToast.dataset.show = "false"; }, 1400);
+			}
+
+			// Pronounce
+			card.querySelector('[data-action="pronounce"]').addEventListener("click", () => {
+				if ("speechSynthesis" in window) {
+					const utter = new SpeechSynthesisUtterance(selectedText);
+					utter.rate = 0.9;
+					window.speechSynthesis.cancel();
+					window.speechSynthesis.speak(utter);
+				}
+			});
+
+			// Save (card footer)
+			const cardSaveBtn = card.querySelector('[data-action="card-save"]');
+			cardSaveBtn.addEventListener("click", async () => {
+				const isActive = cardSaveBtn.dataset.active === "true";
+				cardSaveBtn.dataset.active = isActive ? "false" : "true";
+				await saveWord();
+				showCardToast(isActive ? "Removed" : "Saved");
+			});
+
+			// Copy definition
+			card.querySelector('[data-action="copy"]').addEventListener("click", async () => {
+				const defText = currentDefinition || selectedText;
+				try {
+					await navigator.clipboard.writeText(defText);
+					showCardToast("Copied");
+				} catch {
+					showCardToast("Copy failed");
+				}
+			});
+
 			floatingPillContainer.appendChild(card);
-			explainWord(card.querySelector(".cc-card-body"));
+			explainWord(card.querySelector(".cc-card-content"));
 		});
 
-		highlightBtn.addEventListener("click", toggleHighlight);
 		saveBtn.addEventListener("click", saveWord);
+
+		// Theme picker
+		const themeBtn = floatingPillContainer.querySelector('[data-action="theme"]');
+		const themePanel = floatingPillContainer.querySelector("#cc-theme-panel");
+		const themeSwatches = floatingPillContainer.querySelectorAll(".cc-theme-swatch");
+
+		let pdfCurrentTheme = "warm-calm";
+		chrome.storage.local.get({ contentCoreTheme: "warm-calm" }, ({ contentCoreTheme }) => {
+			pdfCurrentTheme = contentCoreTheme;
+			refreshThemeSwatches();
+		});
+
+		function refreshThemeSwatches() {
+			themeSwatches.forEach((s) => {
+				s.dataset.active = String(s.dataset.themeId === pdfCurrentTheme);
+			});
+		}
+
+		themeBtn.addEventListener("click", (e) => {
+			e.stopPropagation();
+			const isOpen = themePanel.classList.toggle("open");
+			if (isOpen) refreshThemeSwatches();
+			highlightModePanel?.classList.remove("open");
+		});
+
+		themeSwatches.forEach((swatch) => {
+			// Hover — temporary preview
+			swatch.addEventListener("mouseenter", () => {
+				document.documentElement.dataset.theme = swatch.dataset.themeId;
+			});
+			swatch.addEventListener("mouseleave", () => {
+				document.documentElement.dataset.theme = _lastAppliedTheme || "warm-calm";
+			});
+
+			// Click — commit permanently
+			swatch.addEventListener("click", (e) => {
+				e.stopPropagation();
+				pdfCurrentTheme = swatch.dataset.themeId;
+				_lastAppliedTheme = pdfCurrentTheme;
+				document.documentElement.dataset.theme = pdfCurrentTheme;
+				chrome.storage.local.set({ contentCoreTheme: pdfCurrentTheme });
+				refreshThemeSwatches();
+				refreshTbSwatches();
+				themePanel.classList.remove("open");
+				showToast("Theme saved");
+			});
+		});
 	}
 
 	// Page Navigation Helpers
@@ -919,6 +1362,9 @@
 		currentDocument = file.name;
 		if (emptyState) emptyState.style.display = "none";
 
+		const loadingOverlay = document.querySelector("#pdf-loading-overlay");
+		if (loadingOverlay) loadingOverlay.style.display = "flex";
+
 		isProgrammaticScroll = true;
 		clearTimeout(scrollLockTimeout);
 		renderTarget.scrollTop = 0;
@@ -963,9 +1409,11 @@
 			});
 			isProgrammaticScroll = false;
 
+			if (loadingOverlay) loadingOverlay.style.display = "none";
 			showToast(`${totalPages} page${totalPages === 1 ? "" : "s"} loaded`);
 		} catch (error) {
 			console.error("[ContentCore] Error loading PDF:", error);
+			if (loadingOverlay) loadingOverlay.style.display = "none";
 			docTitle.textContent = "Error loading PDF";
 			showToast(`Failed to load PDF: ${error.message}`);
 			isProgrammaticScroll = false;
@@ -1100,6 +1548,48 @@
 
 		window.addEventListener("resize", () => {
 			if (floatingPillContainer) removeFloatingPill();
+		});
+
+		// Keyboard zoom — +/= to zoom in, - to zoom out, 0 to reset
+		document.addEventListener("keydown", (e) => {
+			// Skip if user is typing in an input
+			if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
+			if (!pdfDoc) return;
+
+			if (e.key === "+" || e.key === "=") {
+				e.preventDefault();
+				zoomStep(1);
+			} else if (e.key === "-") {
+				e.preventDefault();
+				zoomStep(-1);
+			} else if (e.key === "0" && (e.ctrlKey || e.metaKey)) {
+				e.preventDefault();
+				applyZoom(1.0);
+			} else if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+				if (currentPage < totalPages) scrollToPage(currentPage + 1);
+			} else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+				if (currentPage > 1) scrollToPage(currentPage - 1);
+			}
+		});
+
+		// Shortcuts panel toggle
+		const tbShortcutsBtn = document.querySelector("#tb-shortcuts-btn");
+		const tbShortcutsPanel = document.querySelector("#tb-shortcuts-panel");
+
+		tbShortcutsBtn?.addEventListener("click", (e) => {
+			e.stopPropagation();
+			const isOpen = tbShortcutsPanel.classList.toggle("open");
+			tbShortcutsBtn.classList.toggle("active", isOpen);
+			// close other panels
+			tbThemePanel?.classList.remove("open");
+			tbThemeBtn?.classList.remove("active");
+		});
+
+		document.addEventListener("mousedown", (e) => {
+			if (tbShortcutsPanel && !tbShortcutsBtn.contains(e.target) && !tbShortcutsPanel.contains(e.target)) {
+				tbShortcutsPanel.classList.remove("open");
+				tbShortcutsBtn.classList.remove("active");
+			}
 		});
 	}
 
