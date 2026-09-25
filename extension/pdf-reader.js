@@ -1109,6 +1109,8 @@
 				pageNumInput.value = String(currentPage);
 			}
 			updateNavButtonsState();
+			// Persist current page so we can restore it after tab navigation
+			savePageStateToIdb();
 		}
 	}
 
@@ -1375,8 +1377,13 @@
 			pdfjs.GlobalWorkerOptions.workerSrc = chrome.runtime.getURL("lib/pdfjs/pdf.worker.min.js");
 
 			pdfRawData = await file.arrayBuffer();
+			// Copy the buffer BEFORE passing to PDF.js — getDocument() transfers
+			// (neuters) the ArrayBuffer to the worker, making it unusable afterwards.
+			const bufferForIdb = pdfRawData.slice(0);
 			pdfDoc = await pdfjs.getDocument({ data: pdfRawData }).promise;
 			totalPages = pdfDoc.numPages;
+			// Persist the pre-copy to IndexedDB so it survives tab navigation
+			savePdfToIdb(bufferForIdb, file.name);
 			currentPage = 1;
 
 			// Update Toolbar Controls
@@ -1447,9 +1454,6 @@
 	function initEvents() {
 		// Scroll Listener on #pdf-render (throttled via RAF)
 		renderTarget.addEventListener("scroll", onScroll, { passive: true });
-		renderTarget.addEventListener("scroll", () => {
-			if (floatingPillContainer) removeFloatingPill();
-		}, { passive: true });
 
 		// File Input
 		fileInput.addEventListener("change", () => {
@@ -1593,7 +1597,112 @@
 		});
 	}
 
-	// Initialize
+	// ── IndexedDB Persistence ──────────────────────────────────────────────────
+	// Stores the raw PDF ArrayBuffer + reading position so the document survives
+	// tab navigation and restores exactly where the user left off.
+
+	const IDB_NAME    = "contentCorePdfStore";
+	const IDB_VERSION = 1;
+	const IDB_STORE   = "pdfs";
+	const IDB_KEY     = "lastPdf";
+
+	function openIdb() {
+		return new Promise((resolve, reject) => {
+			const req = indexedDB.open(IDB_NAME, IDB_VERSION);
+			req.onupgradeneeded = (e) => {
+				e.target.result.createObjectStore(IDB_STORE);
+			};
+			req.onsuccess = (e) => resolve(e.target.result);
+			req.onerror   = (e) => reject(e.target.error);
+		});
+	}
+
+	async function savePdfToIdb(arrayBuffer, fileName) {
+		try {
+			const db    = await openIdb();
+			const tx    = db.transaction(IDB_STORE, "readwrite");
+			const store = tx.objectStore(IDB_STORE);
+			store.put({ buffer: arrayBuffer, name: fileName, page: 1, scale: 1.0, savedAt: Date.now() }, IDB_KEY);
+			return new Promise((resolve, reject) => {
+				tx.oncomplete = () => { db.close(); resolve(); };
+				tx.onerror    = (e) => { db.close(); reject(e.target.error); };
+			});
+		} catch (err) {
+			console.warn("[ContentCore] IDB save failed:", err);
+		}
+	}
+
+	// Debounced — fires ~600ms after the user stops scrolling
+	let _pageStateSaveTimer = null;
+	function savePageStateToIdb() {
+		clearTimeout(_pageStateSaveTimer);
+		_pageStateSaveTimer = setTimeout(async () => {
+			try {
+				const db    = await openIdb();
+				const tx    = db.transaction(IDB_STORE, "readwrite");
+				const store = tx.objectStore(IDB_STORE);
+				const req   = store.get(IDB_KEY);
+				req.onsuccess = (e) => {
+					const record = e.target.result;
+					if (!record) { db.close(); return; }
+					record.page  = currentPage;
+					record.scale = currentScale;
+					store.put(record, IDB_KEY);
+					tx.oncomplete = () => db.close();
+				};
+			} catch { /* ignore */ }
+		}, 600);
+	}
+
+	async function loadPdfFromIdb() {
+		try {
+			const db    = await openIdb();
+			const tx    = db.transaction(IDB_STORE, "readonly");
+			const store = tx.objectStore(IDB_STORE);
+			const req   = store.get(IDB_KEY);
+			return new Promise((resolve) => {
+				req.onsuccess = (e) => { db.close(); resolve(e.target.result || null); };
+				req.onerror   = ()  => { db.close(); resolve(null); };
+			});
+		} catch {
+			return null;
+		}
+	}
+
+	async function clearPdfFromIdb() {
+		try {
+			const db    = await openIdb();
+			const tx    = db.transaction(IDB_STORE, "readwrite");
+			tx.objectStore(IDB_STORE).delete(IDB_KEY);
+			db.close();
+		} catch { /* ignore */ }
+	}
+
+	// Silently restore the last PDF and jump to the saved page + scale
+	async function tryRestoreLastPdf() {
+		const record = await loadPdfFromIdb();
+		if (!record?.buffer) return;
+
+		const blob = new Blob([record.buffer], { type: "application/pdf" });
+		const file = new File([blob], record.name, { type: "application/pdf" });
+
+		await loadPdf(file);
+
+		// Restore scale first, then jump to saved page
+		const savedPage  = record.page  || 1;
+		const savedScale = record.scale || 1.0;
+
+		if (savedScale !== 1.0) {
+			await applyZoom(savedScale);
+		}
+
+		if (savedPage > 1) {
+			scrollToPage(savedPage, "instant");
+		}
+	}
+
+	// ── Initialize
 	initEvents();
+	tryRestoreLastPdf();
 })();
 

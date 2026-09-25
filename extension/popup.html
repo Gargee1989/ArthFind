@@ -601,6 +601,173 @@
 			font-size: 10.5px;
 			color: var(--text-muted);
 		}
+		.api-key-label-row {
+			display: flex;
+			align-items: center;
+			gap: 6px;
+			margin-bottom: 4px;
+		}
+
+		.api-key-label-row label {
+			margin-bottom: 0;
+		}
+
+		.info-icon-btn {
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			width: 16px;
+			height: 16px;
+			border: none;
+			background: none;
+			padding: 0;
+			cursor: pointer;
+			color: var(--text-muted);
+			flex-shrink: 0;
+			transition: color 0.15s;
+			position: relative;
+		}
+
+		.info-icon-btn:hover {
+			color: var(--primary);
+		}
+
+		.api-info-popover {
+			display: none;
+			position: absolute;
+			left: 0;
+			top: calc(100% + 8px);
+			width: 318px;
+			background: var(--surface);
+			border: 1px solid var(--border);
+			border-radius: var(--radius-lg);
+			box-shadow: 0 8px 24px rgba(0,0,0,0.12), 0 2px 6px rgba(0,0,0,0.06);
+			z-index: 999;
+			overflow: hidden;
+			animation: fadeIn 0.15s ease-out;
+		}
+
+		.api-info-popover.open {
+			display: block;
+		}
+
+		.popover-header {
+			padding: 10px 14px 8px;
+			border-bottom: 1px solid var(--border);
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+		}
+
+		.popover-title {
+			font-size: 12px;
+			font-weight: 700;
+			color: var(--text-main);
+			letter-spacing: 0.01em;
+		}
+
+		.popover-close {
+			background: none;
+			border: none;
+			cursor: pointer;
+			color: var(--text-muted);
+			font-size: 16px;
+			line-height: 1;
+			padding: 0 2px;
+			transition: color 0.15s;
+		}
+
+		.popover-close:hover { color: var(--text-main); }
+
+		.popover-body {
+			padding: 10px 14px 14px;
+			display: flex;
+			flex-direction: column;
+			gap: 12px;
+		}
+
+		.provider-block {
+			display: flex;
+			flex-direction: column;
+			gap: 5px;
+		}
+
+		.provider-name-row {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+		}
+
+		.provider-name {
+			font-size: 12px;
+			font-weight: 700;
+			color: var(--text-main);
+			display: flex;
+			align-items: center;
+			gap: 5px;
+		}
+
+		.provider-badge {
+			font-size: 9px;
+			font-weight: 700;
+			padding: 1px 6px;
+			border-radius: 9999px;
+			background: #ecfdf5;
+			color: #065f46;
+			border: 1px solid #a7f3d0;
+			letter-spacing: 0.03em;
+		}
+
+		.provider-link {
+			font-size: 10.5px;
+			color: var(--primary);
+			text-decoration: none;
+			display: inline-flex;
+			align-items: center;
+			gap: 3px;
+			font-weight: 500;
+		}
+
+		.provider-link:hover { text-decoration: underline; }
+
+		.provider-steps {
+			list-style: none;
+			padding: 0;
+			margin: 0;
+			display: flex;
+			flex-direction: column;
+			gap: 3px;
+		}
+
+		.provider-steps li {
+			display: flex;
+			align-items: flex-start;
+			gap: 7px;
+			font-size: 11px;
+			color: var(--text-secondary);
+			line-height: 1.4;
+		}
+
+		.step-num {
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			min-width: 16px;
+			height: 16px;
+			border-radius: 50%;
+			background: var(--primary-light);
+			color: var(--primary);
+			font-size: 9.5px;
+			font-weight: 700;
+			flex-shrink: 0;
+			margin-top: 1px;
+		}
+
+		.popover-divider {
+			height: 1px;
+			background: var(--border);
+			margin: 0 -14px;
+		}
 	</style>
 </head>
 <body>
@@ -643,7 +810,85 @@
 			</div>
 
 			<div class="form-group">
-				<label for="llm-api-key">Provider API key <span class="label-helper">(Encrypted)</span></label>
+				<div class="api-key-label-row" style="position: relative;">
+					<label for="llm-api-key">Provider API key <span class="label-helper">(Encrypted)</span></label>
+					<button type="button" class="info-icon-btn" id="api-key-info-btn" aria-label="How to get an API key" title="How to get an API key">
+						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<circle cx="12" cy="12" r="10"/>
+							<line x1="12" y1="16" x2="12" y2="12"/>
+							<line x1="12" y1="8" x2="12.01" y2="8"/>
+						</svg>
+					</button>
+
+					<!-- API Key Info Popover -->
+					<div class="api-info-popover" id="api-info-popover" role="dialog" aria-label="How to get an API key">
+						<div class="popover-header">
+							<span class="popover-title">How to get your API key</span>
+							<button type="button" class="popover-close" id="api-info-close" aria-label="Close">&times;</button>
+						</div>
+						<div class="popover-body">
+
+							<!-- NVIDIA NIM -->
+							<div class="provider-block">
+								<div class="provider-name-row">
+									<span class="provider-name">
+										NVIDIA NIM
+										<span class="provider-badge">Recommended</span>
+									</span>
+									<a class="provider-link" href="https://developer.nvidia.com/nim" target="_blank" rel="noopener noreferrer">
+										Visit
+										<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+									</a>
+								</div>
+								<ol class="provider-steps">
+									<li><span class="step-num">1</span>Go to developer.nvidia.com/nim and click <strong>Sign Up</strong></li>
+									<li><span class="step-num">2</span>Create a free account with your email</li>
+									<li><span class="step-num">3</span>From the dashboard, click <strong>Generate API Key</strong></li>
+									<li><span class="step-num">4</span>Copy the key starting with <code>nvapi-...</code> and paste it here</li>
+								</ol>
+							</div>
+
+							<div class="popover-divider"></div>
+
+							<!-- Google Gemini -->
+							<div class="provider-block">
+								<div class="provider-name-row">
+									<span class="provider-name">Google Gemini</span>
+									<a class="provider-link" href="https://aistudio.google.com/api-keys" target="_blank" rel="noopener noreferrer">
+										Visit
+										<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+									</a>
+								</div>
+								<ol class="provider-steps">
+									<li><span class="step-num">1</span>Go to aistudio.google.com and sign in with your Google account</li>
+									<li><span class="step-num">2</span>Click <strong>Get API Key</strong> in the left sidebar</li>
+									<li><span class="step-num">3</span>Click <strong>Create API key</strong> and select a project</li>
+									<li><span class="step-num">4</span>Copy the key starting with <code>AIza...</code> and paste it here</li>
+								</ol>
+							</div>
+
+							<div class="popover-divider"></div>
+
+							<!-- OpenAI -->
+							<div class="provider-block">
+								<div class="provider-name-row">
+									<span class="provider-name">OpenAI</span>
+									<a class="provider-link" href="https://platform.openai.com/home" target="_blank" rel="noopener noreferrer">
+										Visit
+										<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+									</a>
+								</div>
+								<ol class="provider-steps">
+									<li><span class="step-num">1</span>Go to platform.openai.com and click <strong>Sign up</strong></li>
+									<li><span class="step-num">2</span>Verify your email and set up billing (required for API access)</li>
+									<li><span class="step-num">3</span>Go to <strong>API Keys</strong> in the left menu and click <strong>Create new secret key</strong></li>
+									<li><span class="step-num">4</span>Copy the key starting with <code>sk-...</code> — it won't be shown again</li>
+								</ol>
+							</div>
+
+						</div>
+					</div>
+				</div>
 				<input id="llm-api-key" type="password" placeholder="Enter or replace your provider key" autocomplete="off">
 				<span id="api-key-error" class="field-error" style="display: none;">Please enter your provider API key.</span>
 				<span class="field-hint">Sent once to backend for encrypted storage.</span>

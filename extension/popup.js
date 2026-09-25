@@ -360,3 +360,44 @@ if (themeGrid) {
 
 	renderThemes();
 }
+
+// ── API Key Info Popover ───────────────────────────────────────────────────
+(function () {
+	const infoBtn   = document.getElementById("api-key-info-btn");
+	const popover   = document.getElementById("api-info-popover");
+	const closeBtn  = document.getElementById("api-info-close");
+
+	if (!infoBtn || !popover) return;
+
+	function openPopover() {
+		popover.classList.add("open");
+		infoBtn.setAttribute("aria-expanded", "true");
+	}
+
+	function closePopover() {
+		popover.classList.remove("open");
+		infoBtn.setAttribute("aria-expanded", "false");
+	}
+
+	infoBtn.addEventListener("click", (e) => {
+		e.stopPropagation();
+		popover.classList.contains("open") ? closePopover() : openPopover();
+	});
+
+	closeBtn.addEventListener("click", (e) => {
+		e.stopPropagation();
+		closePopover();
+	});
+
+	// Close on outside click
+	document.addEventListener("click", (e) => {
+		if (!popover.contains(e.target) && e.target !== infoBtn) {
+			closePopover();
+		}
+	});
+
+	// Close on Escape
+	document.addEventListener("keydown", (e) => {
+		if (e.key === "Escape") closePopover();
+	});
+})();
