@@ -151,68 +151,88 @@
 		}
 
 		if (existingMarks.size > 0) {
-			// Unhighlight cleanly without stacking
 			existingMarks.forEach((mark) => unwrapHighlight(mark));
-			// Fix 3 — remove any pointer overlay tied to these marks
 			removePointerOverlay();
 			const highlightBtn = shadowRoot?.querySelector('[data-action="highlight"]');
 			highlightBtn?.classList.remove("active");
 		} else {
-			// Apply soft yellow temporary highlight
-			try {
-				if (range.startContainer === range.endContainer && range.startContainer.nodeType === Node.TEXT_NODE) {
-					const mark = document.createElement("mark");
-					mark.className = "cc-web-highlight";
-					range.surroundContents(mark);
-				} else {
-					const walker = document.createTreeWalker(
-						range.commonAncestorContainer,
-						NodeFilter.SHOW_TEXT,
-						{
-							acceptNode: (node) => {
-								if (!range.intersectsNode(node)) return NodeFilter.FILTER_REJECT;
-								if (!node.textContent.trim()) return NodeFilter.FILTER_SKIP;
-								return NodeFilter.FILTER_ACCEPT;
-							}
-						}
-					);
-					const nodes = [];
-					while (walker.nextNode()) nodes.push(walker.currentNode);
-					for (const node of nodes) {
-						if (node.parentElement?.closest(".cc-web-highlight")) continue;
-						const nodeRange = document.createRange();
-						if (node === range.startContainer) {
-							nodeRange.setStart(node, range.startOffset);
-							nodeRange.setEnd(node, node.length);
-						} else if (node === range.endContainer) {
-							nodeRange.setStart(node, 0);
-							nodeRange.setEnd(node, range.endOffset);
-						} else {
-							nodeRange.selectNodeContents(node);
-						}
-						if (!nodeRange.collapsed) {
-							const mark = document.createElement("mark");
-							mark.className = "cc-web-highlight";
-							nodeRange.surroundContents(mark);
-						}
-					}
-				}
+			const createdMarks = applyHighlightToRange(range, "cc-web-highlight");
+			if (createdMarks.length > 0) {
 				const highlightBtn = shadowRoot?.querySelector('[data-action="highlight"]');
 				highlightBtn?.classList.add("active");
-
-				// Pointer highlight animation on the first applied mark
-				const firstMark = range.commonAncestorContainer.nodeType === Node.ELEMENT_NODE
-					? range.commonAncestorContainer.querySelector(".cc-web-highlight")
-					: range.startContainer.parentElement?.closest(".cc-web-highlight");
-				if (firstMark) showPointerHighlight(firstMark);
-			} catch (e) {
-				console.error("[ContentCore] Highlight error:", e);
+				if (createdMarks[0]) showPointerHighlight(createdMarks[0]);
 			}
 		}
 
-		// Clear selection and remove floating pill after highlight action
 		window.getSelection()?.removeAllRanges();
 		setTimeout(removeCard, 350);
+	}
+
+	// Robust highlight applicator — works across any DOM structure including
+	// slides, styled spans, and complex layouts. Never uses surroundContents().
+	function applyHighlightToRange(range, className) {
+		const createdMarks = [];
+
+		// Collect all text nodes that intersect the range
+		const walker = document.createTreeWalker(
+			range.commonAncestorContainer,
+			NodeFilter.SHOW_TEXT,
+			{
+				acceptNode: (node) => {
+					if (!range.intersectsNode(node)) return NodeFilter.FILTER_REJECT;
+					if (!node.textContent.trim()) return NodeFilter.FILTER_SKIP;
+					return NodeFilter.FILTER_ACCEPT;
+				}
+			}
+		);
+
+		const textNodes = [];
+		// If the entire range is within one text node
+		if (range.startContainer === range.endContainer &&
+			range.startContainer.nodeType === Node.TEXT_NODE) {
+			textNodes.push(range.startContainer);
+		} else {
+			while (walker.nextNode()) textNodes.push(walker.currentNode);
+		}
+
+		for (const node of textNodes) {
+			// Skip nodes already inside a highlight
+			if (node.parentElement?.closest(`.${className}`)) continue;
+
+			try {
+				const nodeRange = document.createRange();
+
+				if (node === range.startContainer && node === range.endContainer) {
+					nodeRange.setStart(node, range.startOffset);
+					nodeRange.setEnd(node, range.endOffset);
+				} else if (node === range.startContainer) {
+					nodeRange.setStart(node, range.startOffset);
+					nodeRange.setEnd(node, node.length);
+				} else if (node === range.endContainer) {
+					nodeRange.setStart(node, 0);
+					nodeRange.setEnd(node, range.endOffset);
+				} else {
+					nodeRange.selectNodeContents(node);
+				}
+
+				if (nodeRange.collapsed) continue;
+
+				// Use extractContents + insertNode instead of surroundContents
+				// — works correctly even when elements cross range boundaries
+				const mark = document.createElement("mark");
+				mark.className = className;
+				mark.appendChild(nodeRange.extractContents());
+				nodeRange.insertNode(mark);
+				// Normalize parent to merge adjacent text nodes
+				mark.parentNode?.normalize();
+				createdMarks.push(mark);
+			} catch (e) {
+				// Last resort — skip this node silently
+				console.warn("[arth.find] Could not highlight node:", e);
+			}
+		}
+
+		return createdMarks;
 	}
 
 	// Pointer-only highlight — no yellow mark, just the animated border+cursor
@@ -220,103 +240,56 @@
 		const range = savedRange || (window.getSelection()?.rangeCount ? window.getSelection().getRangeAt(0) : null);
 		if (!range) return;
 
-		// Fix 2 — collect existing marks the same way toggleHighlight does
 		const startParent = range.startContainer.nodeType === Node.ELEMENT_NODE
-			? range.startContainer
-			: range.startContainer.parentElement;
+			? range.startContainer : range.startContainer.parentElement;
 		const endParent = range.endContainer.nodeType === Node.ELEMENT_NODE
-			? range.endContainer
-			: range.endContainer.parentElement;
+			? range.endContainer : range.endContainer.parentElement;
 
 		const existingMarks = new Set();
-		const m1 = startParent?.closest(".cc-web-highlight");
-		const m2 = endParent?.closest(".cc-web-highlight");
-		if (m1) existingMarks.add(m1);
-		if (m2) existingMarks.add(m2);
+		[startParent?.closest(".cc-web-highlight"), endParent?.closest(".cc-web-highlight")].forEach(m => m && existingMarks.add(m));
 		if (range.commonAncestorContainer.nodeType === Node.ELEMENT_NODE) {
-			const m3 = range.commonAncestorContainer.closest(".cc-web-highlight");
-			if (m3) existingMarks.add(m3);
-			range.commonAncestorContainer.querySelectorAll(".cc-web-highlight").forEach((el) => {
+			const m = range.commonAncestorContainer.closest(".cc-web-highlight");
+			if (m) existingMarks.add(m);
+			range.commonAncestorContainer.querySelectorAll(".cc-web-highlight").forEach(el => {
 				if (range.intersectsNode(el)) existingMarks.add(el);
 			});
 		}
 
 		if (existingMarks.size > 0) {
-			// Fix 2 — toggle off: unwrap marks and remove overlays
-			existingMarks.forEach((mark) => unwrapHighlight(mark));
+			existingMarks.forEach(mark => unwrapHighlight(mark));
 			removePointerOverlay();
-			const highlightBtn = shadowRoot?.querySelector('[data-action="highlight"]');
-			highlightBtn?.classList.remove("active");
+			shadowRoot?.querySelector('[data-action="highlight"]')?.classList.remove("active");
 			window.getSelection()?.removeAllRanges();
 			setTimeout(removeCard, 350);
 			return;
 		}
 
-		// Wrap text in marks (transparent background — Fix 1 handles via CSS)
-		// Fix 4 — collect ALL created marks and call showPointerHighlight on each
-		const createdMarks = [];
-		try {
-			if (range.startContainer === range.endContainer && range.startContainer.nodeType === Node.TEXT_NODE) {
-				const mark = document.createElement("mark");
-				mark.className = "cc-web-highlight cc-pointer-only";
-				range.surroundContents(mark);
-				createdMarks.push(mark);
-			} else {
-				const walker = document.createTreeWalker(range.commonAncestorContainer, NodeFilter.SHOW_TEXT, {
-					acceptNode: (node) => range.intersectsNode(node) && node.textContent.trim()
-						? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT
-				});
-				const nodes = [];
-				while (walker.nextNode()) nodes.push(walker.currentNode);
-				for (const node of nodes) {
-					if (node.parentElement?.closest(".cc-web-highlight")) continue;
-					const nr = document.createRange();
-					if (node === range.startContainer) { nr.setStart(node, range.startOffset); nr.setEnd(node, node.length); }
-					else if (node === range.endContainer) { nr.setStart(node, 0); nr.setEnd(node, range.endOffset); }
-					else nr.selectNodeContents(node);
-					if (!nr.collapsed) {
-						const mark = document.createElement("mark");
-						mark.className = "cc-web-highlight cc-pointer-only";
-						nr.surroundContents(mark);
-						createdMarks.push(mark);
-					}
-				}
-			}
-		} catch (e) {
-			console.error("[ContentCore] Pointer highlight error:", e);
-		}
+		// Use the same robust applicator as toggleHighlight, with pointer-only class
+		const createdMarks = applyHighlightToRange(range, "cc-web-highlight cc-pointer-only");
 
-		// Fix 4 — show overlay on every created mark
-		// Defer to next frame so the marks are laid out and getBoundingClientRect returns real values
 		if (createdMarks.length > 0) {
 			requestAnimationFrame(() => {
 				removePointerOverlay();
+				const accent = getThemeAccent();
 				for (const mark of createdMarks) {
 					const rect = mark.getBoundingClientRect();
 					if (!rect.width || !rect.height) continue;
-					const accent = getThemeAccent();
 					const overlay = document.createElement("div");
 					overlay.className = "cc-pointer-highlight-overlay";
-					overlay.style.cssText = `
-						left: ${rect.left + window.scrollX}px;
-						top: ${rect.top + window.scrollY}px;
-						width: ${rect.width}px;
-						height: ${rect.height}px;
-					`;
+					overlay.style.cssText = `left:${rect.left + window.scrollX}px;top:${rect.top + window.scrollY}px;width:${rect.width}px;height:${rect.height}px;`;
 					const border = document.createElement("div");
 					border.className = "cc-pointer-border";
 					border.style.borderColor = accent;
 					const pointer = document.createElement("div");
 					pointer.className = "cc-pointer-cursor";
-					pointer.style.cssText = `left: ${rect.width + 4}px; top: ${rect.height + 4}px; color: ${accent};`;
+					pointer.style.cssText = `left:${rect.width + 4}px;top:${rect.height + 4}px;color:${accent};`;
 					pointer.innerHTML = `<svg stroke="currentColor" fill="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 16 16" height="100%" width="100%" xmlns="http://www.w3.org/2000/svg"><path d="M14.082 2.182a.5.5 0 0 1 .103.557L8.528 15.467a.5.5 0 0 1-.917-.007L5.57 10.694.803 8.652a.5.5 0 0 1-.006-.916l12.728-5.657a.5.5 0 0 1 .556.103z"></path></svg>`;
 					overlay.appendChild(border);
 					overlay.appendChild(pointer);
 					document.documentElement.appendChild(overlay);
 					pointerOverlays.push(overlay);
 				}
-				const highlightBtn = shadowRoot?.querySelector('[data-action="highlight"]');
-				highlightBtn?.classList.add("active");
+				shadowRoot?.querySelector('[data-action="highlight"]')?.classList.add("active");
 			});
 		}
 
@@ -346,7 +319,7 @@
 		try {
 			settings = await ContentCoreCrypto.readSettings();
 		} catch (err) {
-			console.error("[ContentCore] Failed to read settings:", err);
+			console.error("[arth.find] Failed to read settings:", err);
 			settings = {};
 		}
 
@@ -358,8 +331,8 @@
 			renderCardError(
 				cardContent,
 				"API Key Setup Required",
-				"Please configure your AI provider (Google Gemini, OpenAI, or NVIDIA NIM) in the ContentCore extension settings to get word definitions.",
-				"Click the ContentCore icon in your browser toolbar to enter your key."
+				"Please configure your AI provider (Google Gemini, OpenAI, or NVIDIA NIM) in the Arth.Find extension settings to get word definitions.",
+				"Click the Arth.Find icon in your browser toolbar to enter your key."
 			);
 			return;
 		}
@@ -429,7 +402,7 @@
 					renderCardError(
 						cardContent,
 						"Connection Failed",
-						"Could not connect to the ContentCore backend. Please ensure the backend server is running and reachable."
+						"Could not connect to the Arth.Find backend. Please ensure the backend server is running and reachable."
 					);
 				}
 				return;
@@ -566,7 +539,7 @@
 		selectionData = { word: selectedText, context: selectedContext };
 
 		lookupHost = document.createElement("div");
-		lookupHost.setAttribute("data-contentcore-host", "true");
+		lookupHost.setAttribute("data-thesis-host", "true");
 		lookupHost.setAttribute("data-theme", currentTheme);
 		shadowRoot = lookupHost.attachShadow({ mode: "closed" });
 
@@ -731,6 +704,16 @@
 					font-size: 14px;
 					line-height: 1.5;
 					color: var(--cc-text);
+					max-height: calc(100vh - 70px);
+				}
+
+				.cc-floating-pill-container.cc-dragging {
+					user-select: none;
+					opacity: 0.92;
+				}
+
+				.cc-floating-pill-container.cc-dragging .cc-drag-handle {
+					opacity: 1;
 				}
 
 				.cc-floating-pill {
@@ -743,6 +726,27 @@
 					padding: 4px 6px;
 					gap: 4px;
 					user-select: none;
+					flex-shrink: 0;
+				}
+
+				.cc-drag-handle {
+					display: inline-flex;
+					align-items: center;
+					justify-content: center;
+					width: 20px;
+					height: 28px;
+					color: var(--cc-ink-soft);
+					cursor: grab;
+					opacity: 0.45;
+					flex-shrink: 0;
+					border-radius: 4px;
+					transition: opacity 0.15s, color 0.15s;
+					margin-right: 2px;
+				}
+
+				.cc-drag-handle:hover {
+					opacity: 0.85;
+					color: var(--cc-ink);
 				}
 
 				.cc-explain-btn {
@@ -811,7 +815,10 @@
 					border-radius: 20px;
 					box-shadow: 0 1px 2px rgba(38, 38, 74, 0.04), 0 12px 28px rgba(38, 38, 74, 0.13);
 					border: 1px solid var(--cc-line);
-					overflow: hidden;
+					overflow-y: auto;
+					overflow-x: hidden;
+					flex: 1;
+					min-height: 0;
 					font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 					color: var(--cc-ink);
 					animation: ccCardFadeIn 0.15s ease-out;
@@ -1190,6 +1197,16 @@
 
 			<div class="cc-floating-pill-container">
 				<div class="cc-floating-pill">
+					<div class="cc-drag-handle" title="Drag to move" aria-hidden="true">
+						<svg width="10" height="14" viewBox="0 0 10 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+							<circle cx="2.5" cy="2"  r="1.2" fill="currentColor"/>
+							<circle cx="7.5" cy="2"  r="1.2" fill="currentColor"/>
+							<circle cx="2.5" cy="7"  r="1.2" fill="currentColor"/>
+							<circle cx="7.5" cy="7"  r="1.2" fill="currentColor"/>
+							<circle cx="2.5" cy="12" r="1.2" fill="currentColor"/>
+							<circle cx="7.5" cy="12" r="1.2" fill="currentColor"/>
+						</svg>
+					</div>
 					<button type="button" class="cc-explain-btn" data-action="explain">Explain this</button>
 					<div class="cc-pill-separator"></div>
 					<div class="cc-highlight-group">
@@ -1287,14 +1304,88 @@
 
 		const pillWidth = 210;
 		const pillHeight = 36;
-		let top = rect.top - pillHeight - 8;
-		if (top < 10) {
-			top = rect.bottom + 8;
-		}
-		let left = Math.max(12, Math.min(window.innerWidth - pillWidth - 12, rect.left + (rect.width - pillWidth) / 2));
+		const MARGIN   = 10;
+		const EDGE_PAD = 16;
+		const viewportH = window.innerHeight;
+		const viewportW = window.innerWidth;
 
-		pillContainer.style.top = `${Math.round(top)}px`;
+		const spaceAbove = rect.top;
+		const spaceBelow = viewportH - rect.bottom;
+
+		let top;
+		let pillAbove;
+		if (spaceAbove >= pillHeight + MARGIN) {
+			top = rect.top - pillHeight - MARGIN;
+			pillAbove = true;
+		} else {
+			top = rect.bottom + MARGIN;
+			pillAbove = false;
+		}
+		top = Math.max(MARGIN, Math.min(viewportH - pillHeight - EDGE_PAD, top));
+
+		let left = rect.left + (rect.width - pillWidth) / 2;
+		left = Math.max(EDGE_PAD, Math.min(viewportW - pillWidth - EDGE_PAD, left));
+
+		pillContainer.style.top  = `${Math.round(top)}px`;
 		pillContainer.style.left = `${Math.round(left)}px`;
+		pillContainer.dataset.cardDir = pillAbove ? "up" : "down";
+
+		// ── Drag to move ──────────────────────────────────────────────────────
+		const dragHandle = shadowRoot.querySelector(".cc-drag-handle");
+		let dragState = null;
+
+		function stopDrag() {
+			if (!dragState) return;
+			dragState = null;
+			pillContainer?.classList.remove("cc-dragging");
+			lookupHost.dataset.dragging = "0";
+			document.getElementById("cc-drag-cursor-web")?.remove();
+			document.removeEventListener("mousemove",  onDragMove);
+			document.removeEventListener("mouseup",    stopDrag);
+			document.removeEventListener("mouseleave", stopDrag);
+		}
+
+		function onDragMove(e) {
+			if (!dragState) return;
+			const dx = e.clientX - dragState.startX;
+			const dy = e.clientY - dragState.startY;
+			const pillH   = pillContainer.offsetHeight || 40;
+			const pillW   = pillContainer.offsetWidth  || 220;
+			const TOP_PAD    = 8;
+			const BOTTOM_PAD = 80;
+			const SIDE_PAD   = 12;
+			const newTop  = Math.max(TOP_PAD, Math.min(window.innerHeight - pillH - BOTTOM_PAD, dragState.origTop  + dy));
+			const newLeft = Math.max(SIDE_PAD, Math.min(window.innerWidth  - pillW - SIDE_PAD,  dragState.origLeft + dx));
+			pillContainer.style.top  = `${Math.round(newTop)}px`;
+			pillContainer.style.left = `${Math.round(newLeft)}px`;
+		}
+
+		dragHandle.addEventListener("mousedown", (e) => {
+			e.preventDefault();
+			e.stopPropagation();
+
+			if (dragState) {
+				stopDrag();
+				return;
+			}
+
+			const cr = pillContainer.getBoundingClientRect();
+			dragState = { startX: e.clientX, startY: e.clientY, origTop: cr.top, origLeft: cr.left };
+			pillContainer.classList.add("cc-dragging");
+			lookupHost.dataset.dragging = "1";
+
+			let cursorStyle = document.getElementById("cc-drag-cursor-web");
+			if (!cursorStyle) {
+				cursorStyle = document.createElement("style");
+				cursorStyle.id = "cc-drag-cursor-web";
+				document.head.appendChild(cursorStyle);
+			}
+			cursorStyle.textContent = "*, *::before, *::after { cursor: grabbing !important; }";
+
+			document.addEventListener("mousemove",  onDragMove);
+			document.addEventListener("mouseup",    stopDrag);
+			document.addEventListener("mouseleave", stopDrag);
+		});
 
 		const explainBtn = shadowRoot.querySelector('[data-action="explain"]');
 		const highlightBtn = shadowRoot.querySelector('[data-action="highlight"]');
@@ -1391,6 +1482,19 @@
 
 			pillContainer.appendChild(card);
 			explainSelection(card.querySelector(".cc-card-content"));
+
+			// Flip card upward if pill opened above the selection
+			if (pillContainer.dataset.cardDir === "up") {
+				card.style.marginTop    = "0";
+				card.style.marginBottom = "8px";
+				card.style.order        = "-1";
+				requestAnimationFrame(() => {
+					const cardH  = card.offsetHeight;
+					const curTop = parseFloat(pillContainer.style.top) || 0;
+					const newTop = Math.max(8, curTop - cardH - 8);
+					pillContainer.style.top = `${Math.round(newTop)}px`;
+				});
+			}
 		});
 
 		highlightBtn.addEventListener("click", () => {
@@ -1618,18 +1722,26 @@
 	injectPageHighlightStyles();
 
 	document.addEventListener("mouseup", (e) => {
-		if (lookupHost?.contains(e.target)) return;
+		if (lookupHost && (e.target === lookupHost || lookupHost.contains(e.target))) return;
+		// Don't trigger if a drag is in progress
+		if (lookupHost?.dataset.dragging === "1") return;
 		clearTimeout(selectionTimer);
 		selectionTimer = setTimeout(showSelectionCard, 80);
 	});
 
 	document.addEventListener("mousedown", (e) => {
-		if (lookupHost && !lookupHost.contains(e.target)) {
+		if (!lookupHost) return;
+		// Don't dismiss while dragging
+		if (lookupHost.dataset.dragging === "1") return;
+		// Use composedPath to correctly detect clicks inside shadow DOM
+		const path = e.composedPath();
+		const insidePill = path.some(node => node === lookupHost);
+		if (!insidePill) {
 			removeCard();
 		}
 	});
 
-	document.addEventListener("scroll", removeCard, { passive: true });
+	// Removed: document.addEventListener("scroll", removeCard) — popup stays open on scroll
 
 	document.addEventListener("keydown", (e) => {
 		if (e.key === "Escape") removeCard();

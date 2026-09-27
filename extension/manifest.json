@@ -1,6 +1,6 @@
 {
 	"manifest_version": 3,
-	"name": "ContentCore",
+	"name": "Arth.Find",
 	"version": "0.1.0",
 	"description": "Get context-aware explanations for words while reading.",
 	"permissions": ["storage"],
@@ -22,7 +22,7 @@
 	},
 	"web_accessible_resources": [
 		{
-			"resources": ["bg-1.jpg", "bg-2.jpg", "bg-3.jpg", "bg-4.jpg", "bg-5.jpg"],
+			"resources": ["bg-1.jpg", "bg-2.jpg", "bg-3.jpg", "bg-4.jpg", "bg-5.jpg", "gtf-logo.svg"],
 			"matches": ["<all_urls>"]
 		}
 	]

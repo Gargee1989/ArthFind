@@ -3,7 +3,7 @@
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
-	<title>ContentCore PDF Reader</title>
+	<title>Arth.Find PDF Reader</title>
 	<script>
 		// Apply theme before first paint to eliminate flash
 		try {
@@ -13,7 +13,7 @@
 		} catch (e) {}
 	</script>
 	<link rel="preconnect" href="https://fonts.googleapis.com">
-	<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+	<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Inter:wght@600&family=Plus+Jakarta+Sans:wght@400;500;600&family=Poppins:wght@500;600&display=swap" rel="stylesheet">
 	<style>
 		*, *::before, *::after {
 			box-sizing: border-box;
@@ -172,27 +172,28 @@
 			overflow: hidden;
 			text-overflow: ellipsis;
 			white-space: nowrap;
+			font-family: "Poppins", -apple-system, BlinkMacSystemFont, sans-serif;
 		}
 
 		.btn-open-file {
 			display: inline-flex;
 			align-items: center;
 			gap: 6px;
-			padding: 5px 10px;
-			background: var(--cc-paper);
-			border: 1px solid var(--border-color);
-			border-radius: 6px;
+			padding: 5px 6px;
+			background: transparent;
+			border: none;
+			border-radius: 0;
 			color: var(--text-secondary);
 			font-size: 12px;
 			font-weight: 500;
 			cursor: pointer;
-			transition: all 0.15s ease;
+			transition: color 0.15s ease;
 		}
 
 		.btn-open-file:hover {
-			background: var(--btn-hover);
+			background: transparent;
 			color: var(--text-primary);
-			border-color: var(--cc-line);
+			border-color: transparent;
 		}
 
 		.toolbar-center {
@@ -658,6 +659,88 @@
 			line-height: 1;
 		}
 
+		/* Custom background upload button */
+		.tb-bg-upload-btn {
+			display: flex;
+			align-items: center;
+			gap: 6px;
+			width: 100%;
+			padding: 5px 7px;
+			margin-top: 4px;
+			border-radius: 6px;
+			border: 1px dashed var(--cc-line);
+			background: transparent;
+			cursor: pointer;
+			font-size: 11px;
+			font-family: inherit;
+			color: var(--cc-ink-soft);
+			text-align: left;
+			transition: background 0.12s, border-color 0.12s, color 0.12s;
+		}
+
+		.tb-bg-upload-btn:hover:not(:disabled) {
+			background: var(--cc-accent-soft);
+			border-color: var(--cc-accent);
+			color: var(--cc-ink);
+		}
+
+		.tb-bg-upload-btn:disabled {
+			opacity: 0.45;
+			cursor: not-allowed;
+		}
+
+		.tb-bg-upload-hint {
+			font-size: 10px;
+			color: var(--cc-ink-soft);
+			padding: 2px 4px 0;
+			opacity: 0.8;
+		}
+
+		.tb-bg-upload-error {
+			font-size: 10px;
+			color: #dc2626;
+			padding: 3px 4px 0;
+			display: none;
+		}
+
+		.tb-bg-upload-error.visible {
+			display: block;
+		}
+
+		/* Delete button overlaid on custom swatches */
+		.tb-bg-swatch-wrapper {
+			position: relative;
+		}
+
+		.tb-bg-swatch-delete {
+			position: absolute;
+			top: 2px;
+			right: 2px;
+			width: 14px;
+			height: 14px;
+			border-radius: 50%;
+			border: none;
+			background: rgba(0, 0, 0, 0.55);
+			color: #fff;
+			font-size: 9px;
+			line-height: 1;
+			cursor: pointer;
+			display: none;
+			align-items: center;
+			justify-content: center;
+			padding: 0;
+			transition: background 0.12s;
+			z-index: 2;
+		}
+
+		.tb-bg-swatch-wrapper:hover .tb-bg-swatch-delete {
+			display: flex;
+		}
+
+		.tb-bg-swatch-delete:hover {
+			background: rgba(220, 38, 38, 0.85);
+		}
+
 		.saved-words-link {
 			display: inline-flex;
 			align-items: center;
@@ -666,15 +749,15 @@
 			color: var(--text-secondary);
 			font-size: 12.5px;
 			font-weight: 500;
-			padding: 5px 10px;
-			background: var(--cc-paper);
-			border: 1px solid var(--border-color);
-			border-radius: 6px;
-			transition: all 0.15s ease;
+			padding: 5px 6px;
+			background: transparent;
+			border: none;
+			border-radius: 0;
+			transition: color 0.15s ease;
 		}
 
 		.saved-words-link:hover {
-			background: var(--btn-hover);
+			background: transparent;
 			color: var(--text-primary);
 		}
 
@@ -713,28 +796,35 @@
 			display: flex;
 			flex-direction: column;
 			align-items: center;
+			justify-content: flex-start;
 			overflow-y: auto;
 			overflow-x: auto;
 			position: relative;
 			overscroll-behavior-y: none;
 			background-color: var(--page-bg);
+			/* Firefox — overlay-style thin scrollbar, no gutter */
 			scrollbar-width: thin;
 			scrollbar-color: var(--cc-line) transparent;
+			scrollbar-gutter: auto;
 		}
 
-		/* WebKit — thin custom scrollbar */
+		/* WebKit — overlay scrollbar: zero-width track, 3 px floating thumb */
 		#pdf-render::-webkit-scrollbar {
-			width: 5px;
-			height: 5px;
+			width: 4px;
+			height: 4px;
+			background: transparent;
 		}
 
 		#pdf-render::-webkit-scrollbar-track {
 			background: transparent;
+			border: none;
+			box-shadow: none;
 		}
 
 		#pdf-render::-webkit-scrollbar-thumb {
 			background: var(--cc-line);
 			border-radius: 99px;
+			border: none;
 			transition: background 0.2s;
 		}
 
@@ -822,66 +912,79 @@
 			outline: 2px solid #ea580c;
 		}
 
-		/* EMPTY STATE / DROPZONE */
+		/* EMPTY STATE — bare icon, no box */
 		.empty-dropzone {
 			display: flex;
-			flex-direction: column;
 			align-items: center;
 			justify-content: center;
-			margin: 60px auto;
-			padding: 48px;
+			margin: 0;
+			flex: 1;
 			width: 100%;
-			max-width: 480px;
-			background: var(--cc-paper);
-			border: 2px dashed var(--cc-line);
-			border-radius: 12px;
+			height: 100%;
+			min-height: calc(100vh - 96px);
+			background: none;
+			border: none;
+			box-shadow: none;
+			backdrop-filter: none;
+			-webkit-backdrop-filter: none;
+			padding: 0;
+			max-width: none;
+			border-radius: 0;
 			text-align: center;
-			box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-			transition: border-color 0.2s, background-color 0.2s;
+			transition: none;
 		}
 
-		.empty-dropzone.drag-over {
-			border-color: var(--cc-accent);
-			background-color: var(--cc-accent-soft);
+		.empty-dropzone.drag-over .empty-upload-icon {
+			color: var(--cc-accent);
+			transform: scale(1.06);
 		}
 
-		.empty-icon {
-			width: 56px;
-			height: 56px;
+		/* The large thin PDF icon — acts as the whole upload target */
+		.empty-upload-icon {
+			position: relative;
 			color: var(--cc-ink-soft);
-			margin-bottom: 16px;
+			opacity: 0.82;
+			cursor: pointer;
+			transition: opacity 0.18s, color 0.18s, transform 0.15s;
+			flex-shrink: 0;
+		}
+
+		.empty-upload-icon:hover {
+			opacity: 1;
+			color: var(--cc-accent);
+			transform: scale(1.04);
+		}
+
+		/* Micro upload arrow overlaid — removed, upload is inside the SVG now */
+
+		/* Text group beside the icon */
+		.empty-text-group {
+			display: flex;
+			flex-direction: column;
+			gap: 4px;
 		}
 
 		.empty-title {
-			font-size: 18px;
-			font-weight: 600;
+			font-family: "DM Serif Display", Georgia, serif;
+			font-size: 22px;
+			font-weight: 400;
 			color: var(--text-primary);
-			margin: 0 0 8px;
+			margin: 0;
+			letter-spacing: 0.01em;
+			line-height: 1.2;
 		}
 
 		.empty-subtitle {
-			font-size: 14px;
+			font-size: 12px;
 			color: var(--text-muted);
-			margin: 0 0 20px;
+			margin: 0;
+			line-height: 1.55;
+			opacity: 0.8;
 		}
 
+		/* hide the old upload button — icon IS the trigger now */
 		.btn-primary-upload {
-			display: inline-flex;
-			align-items: center;
-			gap: 8px;
-			padding: 10px 20px;
-			background: var(--accent-blue);
-			color: #ffffff;
-			border: none;
-			border-radius: 6px;
-			font-size: 14px;
-			font-weight: 600;
-			cursor: pointer;
-			transition: background 0.15s;
-		}
-
-		.btn-primary-upload:hover {
-			background: #1d4ed8;
+			display: none;
 		}
 
 		/* COMPACT FLOATING SELECTION TOOLBAR */
@@ -891,8 +994,9 @@
 			display: flex;
 			flex-direction: column;
 			align-items: flex-start;
-			filter: drop-shadow(0 8px 24px rgba(0, 0, 0, 0.12));
 			transition: opacity 0.12s ease;
+			/* Constrain height to viewport so card never overflows below screen */
+			max-height: calc(100vh - 70px);
 		}
 
 		.cc-floating-pill {
@@ -901,11 +1005,41 @@
 			background: var(--cc-paper);
 			border: 1px solid var(--cc-line);
 			border-radius: 8px;
-			box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12), 0 1px 4px rgba(0, 0, 0, 0.06);
+			box-shadow: 0 4px 16px rgba(0, 0, 0, 0.13), 0 2px 6px rgba(0, 0, 0, 0.08);
 			padding: 4px 6px;
 			gap: 4px;
 			user-select: none;
 			font-family: inherit;
+			flex-shrink: 0;
+		}
+
+		.cc-drag-handle {
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			width: 20px;
+			height: 28px;
+			color: var(--cc-ink-soft);
+			cursor: grab;
+			opacity: 0.45;
+			flex-shrink: 0;
+			border-radius: 4px;
+			transition: opacity 0.15s, color 0.15s;
+			margin-right: 2px;
+		}
+
+		.cc-drag-handle:hover {
+			opacity: 0.85;
+			color: var(--cc-ink);
+		}
+
+		.cc-floating-pill-container.cc-dragging .cc-drag-handle {
+			opacity: 1;
+		}
+
+		.cc-floating-pill-container.cc-dragging {
+			user-select: none;
+			opacity: 0.92;
 		}
 
 		.cc-explain-btn {
@@ -1133,7 +1267,10 @@
 			border-radius: 20px;
 			box-shadow: 0 1px 2px rgba(38, 38, 74, 0.04), 0 12px 28px rgba(38, 38, 74, 0.13);
 			border: 1px solid var(--cc-line);
-			overflow: hidden;
+			overflow-y: auto;
+			overflow-x: hidden;
+			flex: 1;
+			min-height: 0;
 			font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 			color: var(--cc-ink);
 			animation: ccCardFadeIn 0.15s ease-out;
@@ -1141,7 +1278,7 @@
 
 		@keyframes ccCardFadeIn {
 			from { opacity: 0; transform: translateY(-4px); }
-			to { opacity: 1; transform: translateY(0); }
+			to   { opacity: 1; transform: translateY(0); }
 		}
 
 		.cc-card-body {
@@ -1466,7 +1603,6 @@
 			<span id="doc-title" class="doc-title" title="No document loaded">No document loaded</span>
 			<label class="btn-open-file" for="file-input" title="Open PDF">
 				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></svg>
-				<span>Open</span>
 			</label>
 			<input id="file-input" type="file" accept="application/pdf" style="display: none;">
 		</div>
@@ -1478,7 +1614,7 @@
 				<button type="button" id="page-prev" class="tb-btn icon-only" title="Previous page" aria-label="Previous page" disabled>
 					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
 				</button>
-				<span class="tb-label">page</span>
+				<span class="tb-label"></span>
 				<input type="number" id="page-num-input" class="page-input" value="1" min="1" max="1" aria-label="Current page" disabled>
 				<span id="page-count-display" class="page-count-text">/ 0</span>
 				<button type="button" id="page-next" class="tb-btn icon-only" title="Next page" aria-label="Next page" disabled>
@@ -1606,10 +1742,18 @@
 					<button class="tb-bg-swatch" data-bg="bg-4.jpg" title="City park at night"></button>
 					<button class="tb-bg-swatch" data-bg="bg-5.jpg" title="Wallpaper 5"></button>
 				</div>
+				<!-- Dynamic custom uploaded image swatches (up to 5) -->
+				<div class="tb-bg-grid" id="tb-bg-custom-grid" style="margin-top:4px;"></div>
+				<input type="file" id="tb-bg-file-input" accept="image/*" style="display:none;" aria-label="Upload custom background image">
+				<button type="button" class="tb-bg-upload-btn" id="tb-bg-upload-btn" title="Upload a 1920×1080 image as your background">
+					<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+					Upload your own…
+				</button>
+				<div class="tb-bg-upload-hint">At least 1920×1080 px · up to 2 images</div>
+				<div class="tb-bg-upload-error" id="tb-bg-upload-error"></div>
 			</div>
 			<a href="saved-words.html" class="saved-words-link" title="Open Saved Words Notebook">
 				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-				<span>Saved Words</span>
 			</a>
 		</div>
 	</header>
@@ -1623,21 +1767,23 @@
 		</div>
 	</div>
 
-	<!-- MAIN PDF RENDER TARGET -->
 	<main id="pdf-render">
 		<div id="empty-state" class="empty-dropzone">
-			<svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-				<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-				<polyline points="14 2 14 8 20 8"/>
-				<line x1="12" y1="18" x2="12" y2="12"/>
-				<line x1="9" y1="15" x2="15" y2="15"/>
-			</svg>
-			<h2 class="empty-title">Open a PDF Document</h2>
-			<p class="empty-subtitle">Select a PDF file or drag and drop it here to start reading with AI context.</p>
-			<label class="btn-primary-upload" for="file-input">
-				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-				<span>Choose PDF File</span>
+			<label class="empty-upload-icon" for="file-input" aria-label="Open PDF file">
+				<svg width="40" height="38" viewBox="0 0 24 30" fill="none" xmlns="http://www.w3.org/2000/svg">
+					<!-- Page body — solid fill -->
+					<path d="M14 2H4a2 2 0 0 0-2 2v22a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8z" fill="currentColor"/>
+					<!-- Folded corner flap -->
+					<path d="M14 2L20 8H14z" fill="var(--cc-paper)"/>
+					<!-- + icon centred on the page body -->
+					<line x1="12" y1="14" x2="12" y2="22" stroke="var(--cc-paper)" stroke-width="1.4" stroke-linecap="round"/>
+					<line x1="8" y1="18" x2="16" y2="18" stroke="var(--cc-paper)" stroke-width="1.4" stroke-linecap="round"/>
+				</svg>
 			</label>
+			<!-- Text -->
+			<div class="empty-text-group" style="display:none;"></div>
+			<!-- Hidden real upload button kept for JS compatibility -->
+			<label class="btn-primary-upload" for="file-input"></label>
 		</div>
 	</main>
 

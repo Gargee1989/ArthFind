@@ -3,7 +3,7 @@
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>Saved Words — ContentCore Vocabulary Review</title>
+	<title>Saved Words — Arth.Find Vocabulary Review</title>
 	<link rel="preconnect" href="https://fonts.googleapis.com">
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 	<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=Plus+Jakarta+Sans:wght@400;500;600&display=swap" rel="stylesheet">
@@ -73,14 +73,7 @@
 			display: inline-flex;
 			align-items: center;
 			justify-content: center;
-			width: 40px;
-			height: 40px;
-			background: var(--accent);
-			color: #fff;
-			border-radius: var(--radius);
-			font-weight: 700;
-			font-size: 20px;
-			font-family: Georgia, serif;
+			flex-shrink: 0;
 		}
 
 		h1 {
@@ -102,17 +95,6 @@
 			display: flex;
 			align-items: center;
 			gap: 10px;
-		}
-
-		.stat-pill {
-			background: var(--surface);
-			border: 1px solid var(--border);
-			padding: 6px 14px;
-			border-radius: 20px;
-			font-size: 13px;
-			font-weight: 600;
-			color: var(--accent);
-			box-shadow: var(--shadow-sm);
 		}
 
 		/* Controls / Toolbar */
@@ -396,14 +378,22 @@
 	<div class="container">
 		<header>
 			<div class="header-title">
-				<div class="logo-badge">CC</div>
+				<div class="logo-badge">
+					<svg xmlns="http://www.w3.org/2000/svg" viewBox="-20 -20 851.34 566.99" width="38" height="25" aria-hidden="true" focusable="false">
+						<g transform="translate(-60.101763,581.986566) scale(0.1,-0.1)" fill="#111827" stroke="none">
+							<path d="M2402 5808 c-20 -20 -14 -32 35 -73 26 -22 124 -114 216 -205 93 -91 176 -168 186 -171 9 -4 459 -7 1000 -8 783 0 986 -3 993 -13 4 -7 8 -992 8 -2188 l1 -2175 173 -177 c96 -97 186 -193 201 -212 15 -20 36 -36 46 -36 18 0 19 59 21 2398 l3 2397 1465 5 1465 5 80 65 c44 36 139 119 211 185 71 66 148 135 170 152 82 67 337 62 -3130 63 -2447 0 -3134 -2 -3144 -12z"/>
+							<path d="M3265 4478 c-27 -24 -106 -92 -175 -153 -69 -61 -152 -133 -185 -160 -70 -59 -75 -64 -68 -82 4 -9 30 -13 98 -13 51 0 117 -5 146 -10 30 -6 84 -15 121 -19 146 -19 354 -129 480 -254 76 -74 187 -239 218 -322 12 -33 27 -69 33 -80 11 -22 32 -134 42 -230 12 -108 -35 -356 -81 -430 -6 -11 -15 -30 -19 -43 -20 -69 -160 -246 -257 -328 -284 -237 -593 -339 -973 -320 -194 9 -399 52 -530 111 -120 55 -144 65 -149 65 -9 0 -188 105 -269 158 -101 66 -142 98 -262 206 -55 50 -110 99 -123 111 -13 11 -54 56 -90 100 -37 44 -77 91 -89 104 -61 64 -304 404 -365 511 -10 19 -30 53 -43 75 -14 22 -29 51 -35 65 -18 41 -60 90 -77 90 -12 0 -14 -9 -10 -42 11 -107 68 -320 143 -543 45 -132 165 -371 252 -499 130 -194 384 -474 498 -550 21 -14 66 -45 99 -69 196 -141 442 -256 685 -317 208 -53 218 -54 450 -54 210 0 233 2 345 28 65 15 126 31 135 35 8 5 33 12 55 16 22 4 59 15 82 26 23 10 46 19 51 19 13 0 225 109 275 141 93 59 228 169 301 243 149 153 288 363 342 516 9 25 22 61 29 80 32 88 56 184 71 290 44 307 -52 720 -224 963 -103 146 -269 323 -367 392 -159 111 -257 165 -326 180 -19 4 -46 14 -61 21 -15 8 -49 14 -75 14 -42 0 -54 -6 -98 -42z"/>
+							<path d="M5721 4036 c-10 -11 -15 -77 -19 -229 -4 -191 -3 -214 12 -226 14 -12 168 -14 969 -15 554 -1 960 2 972 8 22 10 82 64 255 231 63 61 142 134 174 162 48 42 57 55 47 66 -9 12 -194 15 -1204 16 -1065 2 -1195 0 -1206 -13z"/>
+						</g>
+					</svg>
+				</div>
 				<div>
 					<h1>Vocabulary Review</h1>
 					<div class="subtitle">Words and definitions saved during your reading sessions</div>
 				</div>
 			</div>
 			<div class="header-stats">
-				<div id="word-count-badge" class="stat-pill">0 words saved</div>
+				<span id="word-count-badge" style="font-family: 'Plus Jakarta Sans', sans-serif; font-size: 13px; color: var(--text-muted);">0 words saved</span>
 			</div>
 		</header>
 
@@ -494,7 +484,7 @@
 	</div>
 
 	<footer>
-		ContentCore &copy; 2026 &mdash; Smart Contextual Reading Assistant
+		Arth.Find &copy; 2026
 	</footer>
 
 	<script src="saved-words.js"></script>

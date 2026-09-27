@@ -134,26 +134,120 @@
 
 	// Toolbar background image picker
 	const tbBgSwatches = document.querySelectorAll(".tb-bg-swatch");
+	const tbBgCustomGrid = document.getElementById("tb-bg-custom-grid");
+	const tbBgUploadBtn = document.getElementById("tb-bg-upload-btn");
+	const tbBgFileInput = document.getElementById("tb-bg-file-input");
+	const tbBgUploadError = document.getElementById("tb-bg-upload-error");
+	const MAX_CUSTOM_BGS = 2;
 	let currentBg = "none";
+	// Array of { id: string, dataUrl: string }
+	let customBgImages = [];
 
-	function applyBg(bgFile) {
-		currentBg = bgFile || "none";
+	function showBgUploadError(msg) {
+		if (!tbBgUploadError) return;
+		tbBgUploadError.textContent = msg;
+		tbBgUploadError.classList.add("visible");
+	}
+
+	function clearBgUploadError() {
+		if (!tbBgUploadError) return;
+		tbBgUploadError.textContent = "";
+		tbBgUploadError.classList.remove("visible");
+	}
+
+	function getCustomDataUrl(bgValue) {
+		if (!bgValue || !bgValue.startsWith("custom-")) return null;
+		const id = bgValue.slice(7); // strip "custom-"
+		const entry = customBgImages.find((c) => c.id === id);
+		return entry ? entry.dataUrl : null;
+	}
+
+	function applyBg(bgValue) {
+		currentBg = bgValue || "none";
 		if (currentBg === "none") {
 			document.body.style.backgroundImage = "";
 			document.body.classList.remove("has-bg-image");
 			renderTarget.classList.remove("has-bg-image");
+		} else if (currentBg.startsWith("custom-")) {
+			const dataUrl = getCustomDataUrl(currentBg);
+			if (dataUrl) {
+				document.body.style.backgroundImage = `url('${dataUrl}')`;
+				document.body.classList.add("has-bg-image");
+				renderTarget.classList.remove("has-bg-image");
+			}
 		} else {
+			// Built-in bundled backgrounds
 			const url = `url('${chrome.runtime.getURL(currentBg)}')`;
 			document.body.style.backgroundImage = url;
 			document.body.classList.add("has-bg-image");
 			renderTarget.classList.remove("has-bg-image");
 		}
-		tbBgSwatches.forEach((s) => {
+		// Sync active state on all swatches (built-in + custom)
+		document.querySelectorAll(".tb-bg-swatch").forEach((s) => {
 			s.dataset.active = String(s.dataset.bg === currentBg);
 		});
 	}
 
-	// Set correct full extension URLs on the thumbnail swatches
+	function saveCustomImages() {
+		chrome.storage.local.set({ contentCoreBgCustomImages: customBgImages });
+	}
+
+	function renderCustomSwatches() {
+		if (!tbBgCustomGrid) return;
+		tbBgCustomGrid.innerHTML = "";
+		customBgImages.forEach(({ id, dataUrl }) => {
+			const bgKey = `custom-${id}`;
+			const wrapper = document.createElement("div");
+			wrapper.className = "tb-bg-swatch-wrapper";
+
+			const btn = document.createElement("button");
+			btn.className = "tb-bg-swatch";
+			btn.dataset.bg = bgKey;
+			btn.dataset.active = String(bgKey === currentBg);
+			btn.title = "Your custom background";
+			btn.style.backgroundImage = `url('${dataUrl}')`;
+			btn.addEventListener("click", (e) => {
+				e.stopPropagation();
+				clearBgUploadError();
+				chrome.storage.local.set({ contentCoreBg: bgKey });
+				applyBg(bgKey);
+			});
+
+			const delBtn = document.createElement("button");
+			delBtn.className = "tb-bg-swatch-delete";
+			delBtn.title = "Remove this background";
+			delBtn.setAttribute("aria-label", "Remove custom background");
+			delBtn.textContent = "✕";
+			delBtn.addEventListener("click", (e) => {
+				e.stopPropagation();
+				clearBgUploadError();
+				// If this was the active bg, reset to none
+				if (currentBg === bgKey) {
+					chrome.storage.local.set({ contentCoreBg: "none" });
+					applyBg("none");
+				}
+				customBgImages = customBgImages.filter((c) => c.id !== id);
+				saveCustomImages();
+				renderCustomSwatches();
+				syncUploadBtnState();
+			});
+
+			wrapper.appendChild(btn);
+			wrapper.appendChild(delBtn);
+			tbBgCustomGrid.appendChild(wrapper);
+		});
+	}
+
+	function syncUploadBtnState() {
+		if (!tbBgUploadBtn) return;
+		const atLimit = customBgImages.length >= MAX_CUSTOM_BGS;
+		tbBgUploadBtn.disabled = atLimit;
+		tbBgUploadBtn.title = atLimit
+			? `Limit of ${MAX_CUSTOM_BGS} custom backgrounds reached. Remove one to add more.`
+			: "Upload a custom background (at least 1920×1080 px)";
+	}
+
+	// Set correct full extension URLs on the built-in thumbnail swatches
 	tbBgSwatches.forEach((swatch) => {
 		const bg = swatch.dataset.bg;
 		if (bg && bg !== "none") {
@@ -161,18 +255,84 @@
 		}
 	});
 
-	chrome.storage.local.get({ contentCoreBg: "none" }, ({ contentCoreBg }) => {
-		applyBg(contentCoreBg);
-	});
+	// Restore saved backgrounds on load
+	chrome.storage.local.get(
+		{ contentCoreBg: "none", contentCoreBgCustomImages: [] },
+		({ contentCoreBg, contentCoreBgCustomImages }) => {
+			customBgImages = Array.isArray(contentCoreBgCustomImages) ? contentCoreBgCustomImages : [];
+			renderCustomSwatches();
+			syncUploadBtnState();
+			applyBg(contentCoreBg);
+		}
+	);
 
+	// Click handlers for built-in swatches
 	tbBgSwatches.forEach((swatch) => {
 		swatch.addEventListener("click", (e) => {
 			e.stopPropagation();
+			clearBgUploadError();
 			const chosen = swatch.dataset.bg;
 			chrome.storage.local.set({ contentCoreBg: chosen });
 			applyBg(chosen);
 		});
 	});
+
+	// Upload button triggers file input
+	if (tbBgUploadBtn && tbBgFileInput) {
+		tbBgUploadBtn.addEventListener("click", (e) => {
+			e.stopPropagation();
+			if (tbBgUploadBtn.disabled) return;
+			clearBgUploadError();
+			tbBgFileInput.value = "";
+			tbBgFileInput.click();
+		});
+
+		tbBgFileInput.addEventListener("change", () => {
+			const file = tbBgFileInput.files && tbBgFileInput.files[0];
+			if (!file) return;
+
+			if (customBgImages.length >= MAX_CUSTOM_BGS) {
+				showBgUploadError(`You've reached the limit of ${MAX_CUSTOM_BGS} custom backgrounds. Remove one first.`);
+				return;
+			}
+
+			// Only accept image files
+			if (!file.type.startsWith("image/")) {
+				showBgUploadError("Please select an image file.");
+				return;
+			}
+
+			const reader = new FileReader();
+			reader.onload = (evt) => {
+				const dataUrl = evt.target.result;
+				// Validate resolution: must be at least 1920×1080
+				const img = new Image();
+				img.onload = () => {
+					if (img.naturalWidth < 1920 || img.naturalHeight < 1080) {
+						showBgUploadError(`Image must be at least 1920×1080 px. Yours is ${img.naturalWidth}×${img.naturalHeight}.`);
+						return;
+					}
+					clearBgUploadError();
+					const newId = Date.now().toString(36);
+					customBgImages.push({ id: newId, dataUrl });
+					saveCustomImages();
+					renderCustomSwatches();
+					syncUploadBtnState();
+					const bgKey = `custom-${newId}`;
+					chrome.storage.local.set({ contentCoreBg: bgKey });
+					applyBg(bgKey);
+				};
+				img.onerror = () => {
+					showBgUploadError("Could not read the image. Please try a different file.");
+				};
+				img.src = dataUrl;
+			};
+			reader.onerror = () => {
+				showBgUploadError("Failed to read the file. Please try again.");
+			};
+			reader.readAsDataURL(file);
+		});
+	}
 
 	// Toast Helper
 	let toastTimer = null;
@@ -346,7 +506,7 @@
 				if (firstMark) showPointerHighlight(firstMark);
 				showToast("Highlighted");
 			} catch (e) {
-				console.error("[ContentCore] Highlight error:", e);
+				console.error("[arth.find] Highlight error:", e);
 			}
 		}
 
@@ -392,7 +552,7 @@
 
 			showToast("Saved to vocabulary");
 		} catch (error) {
-			console.error("[ContentCore] Save error:", error);
+			console.error("[arth.find] Save error:", error);
 			showToast("Could not save word");
 		}
 	}
@@ -441,7 +601,7 @@
 		try {
 			settings = await ContentCoreCrypto.readSettings();
 		} catch (err) {
-			console.error("[ContentCore] Failed to read settings:", err);
+			console.error("[arth.find] Failed to read settings:", err);
 			settings = {};
 		}
 
@@ -453,8 +613,8 @@
 			renderCardError(
 				cardContent,
 				"API Key Setup Required",
-				"Please configure your AI provider (Google Gemini, OpenAI, or NVIDIA NIM) in the ContentCore extension settings to get word definitions.",
-				"Click the ContentCore icon in your browser toolbar to enter your key."
+				"Please configure your AI provider (Google Gemini, OpenAI, or NVIDIA NIM) in the Arth.Find extension settings to get word definitions.",
+				"Click the Arth.Find icon in your browser toolbar to enter your key."
 			);
 			return;
 		}
@@ -499,7 +659,7 @@
 				if (typeof navigator !== "undefined" && navigator.onLine === false) {
 					renderCardError(cardContent, "No Internet Connection", "Your device appears to be offline. Please check your network and try again.");
 				} else {
-					renderCardError(cardContent, "Connection Failed", "Could not connect to the ContentCore backend. Please ensure the backend server is running on port 8000.");
+					renderCardError(cardContent, "Connection Failed", "Could not connect to the Arth.Find backend. Please ensure the backend server is running on port 8000.");
 				}
 				return;
 			}
@@ -613,7 +773,7 @@
 				}
 			}
 		} catch (e) {
-			console.error("[ContentCore] Pointer highlight error:", e);
+			console.error("[arth.find] Pointer highlight error:", e);
 		}
 
 		if (createdMarks.length > 0) {
@@ -704,8 +864,11 @@
 		const rect = range.getBoundingClientRect();
 		if (rect.width === 0 && rect.height === 0) return;
 
-		savedRange = range.cloneRange();
+		// Remove the old pill FIRST, then save the range —
+		// removeFloatingPill() nulls savedRange, so saving before it wipes it.
+		const clonedRange = range.cloneRange();
 		removeFloatingPill();
+		savedRange = clonedRange;
 
 		const page = selection.anchorNode?.parentElement?.closest(".pdf-page");
 		const context = contextFor(selection, page?.dataset.text || pageText);
@@ -726,6 +889,16 @@
 		// 4. Note/Save icon button (folded corner notepad/sheet outline icon)
 		floatingPillContainer.innerHTML = `
 			<div class="cc-floating-pill">
+				<div class="cc-drag-handle" title="Drag to move" aria-hidden="true">
+					<svg width="10" height="14" viewBox="0 0 10 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+						<circle cx="2.5" cy="2"  r="1.2" fill="currentColor"/>
+						<circle cx="7.5" cy="2"  r="1.2" fill="currentColor"/>
+						<circle cx="2.5" cy="7"  r="1.2" fill="currentColor"/>
+						<circle cx="7.5" cy="7"  r="1.2" fill="currentColor"/>
+						<circle cx="2.5" cy="12" r="1.2" fill="currentColor"/>
+						<circle cx="7.5" cy="12" r="1.2" fill="currentColor"/>
+					</svg>
+				</div>
 				<button type="button" class="cc-explain-btn" data-action="explain">Explain this</button>
 				<div class="cc-pill-separator"></div>
 				<div class="cc-highlight-group">
@@ -807,8 +980,6 @@
 			</div>
 		`;
 
-		document.body.appendChild(floatingPillContainer);
-
 		// Prevent mousedown inside floating pill from clearing text selection prematurely
 		floatingPillContainer.addEventListener("mousedown", (e) => {
 			if (e.target.tagName !== "INPUT" && e.target.tagName !== "TEXTAREA") {
@@ -818,19 +989,107 @@
 
 		floatingPillContainer.addEventListener("mouseup", (e) => e.stopPropagation());
 
-		// Positioning: centered above selection or below if near top toolbar
-		const pillEl = floatingPillContainer.querySelector(".cc-floating-pill");
-		const pillWidth = pillEl.offsetWidth || 210;
-		const pillHeight = pillEl.offsetHeight || 38;
+		// ── Smart positioning: flip above/below based on available viewport space ──
+		document.body.appendChild(floatingPillContainer);
 
-		let top = rect.top - pillHeight - 8;
-		if (top < 56) {
-			top = rect.bottom + 8;
+		const pillEl      = floatingPillContainer.querySelector(".cc-floating-pill");
+		const pillWidth   = pillEl.offsetWidth  || 210;
+		const pillHeight  = pillEl.offsetHeight || 38;
+
+		const viewportH   = window.innerHeight;
+		const viewportW   = window.innerWidth;
+		const MARGIN      = 10; // px gap between pill and selection
+		const EDGE_PAD    = 16; // min distance from viewport edges
+
+		// Space available above and below the selection
+		const spaceAbove  = rect.top - 56;          // 56 = toolbar height
+		const spaceBelow  = viewportH - rect.bottom;
+
+		// Prefer above; fall back to below only when not enough room above
+		let top;
+		let pillAbove; // true = pill is above the selection, card should open upward
+		if (spaceAbove >= pillHeight + MARGIN) {
+			top = rect.top - pillHeight - MARGIN;
+			pillAbove = true;
+		} else {
+			top = rect.bottom + MARGIN;
+			pillAbove = false;
 		}
-		let left = Math.max(16, Math.min(window.innerWidth - pillWidth - 16, rect.left + (rect.width - pillWidth) / 2));
 
-		floatingPillContainer.style.top = `${Math.round(top)}px`;
+		// Clamp vertically so pill itself never goes off-screen
+		top = Math.max(56 + MARGIN, Math.min(viewportH - pillHeight - EDGE_PAD, top));
+
+		// Center horizontally on selection, clamp to viewport
+		let left = rect.left + (rect.width - pillWidth) / 2;
+		left = Math.max(EDGE_PAD, Math.min(viewportW - pillWidth - EDGE_PAD, left));
+
+		floatingPillContainer.style.top  = `${Math.round(top)}px`;
 		floatingPillContainer.style.left = `${Math.round(left)}px`;
+
+		// Store direction so the card can open in the right direction
+		floatingPillContainer.dataset.cardDir = pillAbove ? "up" : "down";
+
+		// ── Drag to move ──────────────────────────────────────────────────────
+		const dragHandle = floatingPillContainer.querySelector(".cc-drag-handle");
+		let dragState = null;
+
+		function stopDrag() {
+			if (!dragState) return;
+			dragState = null;
+			floatingPillContainer?.classList.remove("cc-dragging");
+			document.getElementById("cc-drag-cursor")?.remove();
+			document.removeEventListener("mousemove",  onDragMove);
+			document.removeEventListener("mouseup",    stopDrag);
+			document.removeEventListener("mouseleave", stopDrag);
+		}
+
+		function onDragMove(e) {
+			if (!dragState) return;
+			const dx = e.clientX - dragState.startX;
+			const dy = e.clientY - dragState.startY;
+			const pillH   = floatingPillContainer.offsetHeight || 40;
+			const pillW   = floatingPillContainer.offsetWidth  || 220;
+			const TOP_PAD    = 56;  // toolbar height
+			const BOTTOM_PAD = 80;  // safe margin above taskbar
+			const SIDE_PAD   = 12;
+			const newTop  = Math.max(TOP_PAD, Math.min(window.innerHeight - pillH - BOTTOM_PAD, dragState.origTop  + dy));
+			const newLeft = Math.max(SIDE_PAD, Math.min(window.innerWidth  - pillW - SIDE_PAD,  dragState.origLeft + dx));
+			floatingPillContainer.style.top  = `${Math.round(newTop)}px`;
+			floatingPillContainer.style.left = `${Math.round(newLeft)}px`;
+		}
+
+		dragHandle.addEventListener("mousedown", (e) => {
+			e.preventDefault();
+			e.stopPropagation();
+
+			// If already dragging — clicking the handle again drops it in place
+			if (dragState) {
+				stopDrag();
+				return;
+			}
+
+			const containerRect = floatingPillContainer.getBoundingClientRect();
+			dragState = {
+				startX:   e.clientX,
+				startY:   e.clientY,
+				origTop:  containerRect.top,
+				origLeft: containerRect.left,
+			};
+			floatingPillContainer.classList.add("cc-dragging");
+
+			// Global cursor override — beats every element-level cursor rule
+			let cursorStyle = document.getElementById("cc-drag-cursor");
+			if (!cursorStyle) {
+				cursorStyle = document.createElement("style");
+				cursorStyle.id = "cc-drag-cursor";
+				document.head.appendChild(cursorStyle);
+			}
+			cursorStyle.textContent = "*, *::before, *::after { cursor: grabbing !important; }";
+
+			document.addEventListener("mousemove",  onDragMove);
+			document.addEventListener("mouseup",    stopDrag);
+			document.addEventListener("mouseleave", stopDrag);
+		});
 
 		// Attach event listeners
 		const explainBtn = floatingPillContainer.querySelector('[data-action="explain"]');
@@ -962,6 +1221,23 @@
 
 			floatingPillContainer.appendChild(card);
 			explainWord(card.querySelector(".cc-card-content"));
+
+			// If the pill is above the selection, flip card to open upward
+			// so it grows toward the top instead of falling off the bottom
+			if (floatingPillContainer.dataset.cardDir === "up") {
+				card.style.marginTop    = "0";
+				card.style.marginBottom = "8px";
+				card.style.order        = "-1"; // render card above pill in flex column
+
+				// After card renders, shift the whole container up by card height
+				// so the pill stays anchored to its original position
+				requestAnimationFrame(() => {
+					const cardH  = card.offsetHeight;
+					const curTop = parseFloat(floatingPillContainer.style.top) || 0;
+					const newTop = Math.max(56 + 10, curTop - cardH - 8);
+					floatingPillContainer.style.top = `${Math.round(newTop)}px`;
+				});
+			}
 		});
 
 		saveBtn.addEventListener("click", saveWord);
@@ -1275,7 +1551,10 @@
 				if (signal.aborted) return;
 				const page = await pdf.getPage(pageNumber);
 				if (signal.aborted) return;
+				const dpr = window.devicePixelRatio || 1;
 				const viewport = page.getViewport({ scale: currentScale });
+				// High-DPI viewport — render at physical pixel resolution for crisp output
+				const hiDpiViewport = page.getViewport({ scale: currentScale * dpr });
 
 				const wrapper = document.createElement("section");
 				wrapper.className = "pdf-page";
@@ -1285,14 +1564,12 @@
 				wrapper.style.minHeight = `${viewport.height}px`;
 
 				const canvas = document.createElement("canvas");
-				const dpr = window.devicePixelRatio || 1;
-				canvas.width = Math.floor(viewport.width * dpr);
-				canvas.height = Math.floor(viewport.height * dpr);
-				canvas.style.width = `${viewport.width}px`;
+				canvas.width  = Math.floor(hiDpiViewport.width);
+				canvas.height = Math.floor(hiDpiViewport.height);
+				canvas.style.width  = `${viewport.width}px`;
 				canvas.style.height = `${viewport.height}px`;
 
 				const ctx = canvas.getContext("2d");
-				ctx.scale(dpr, dpr);
 				wrapper.appendChild(canvas);
 
 				const textLayer = document.createElement("div");
@@ -1325,7 +1602,7 @@
 				}
 
 				wrapper.appendChild(textLayer);
-				const renderTask = page.render({ canvasContext: ctx, viewport });
+				const renderTask = page.render({ canvasContext: ctx, viewport: hiDpiViewport });
 				signal.addEventListener("abort", () => {
 					try {
 						renderTask.cancel();
@@ -1419,7 +1696,7 @@
 			if (loadingOverlay) loadingOverlay.style.display = "none";
 			showToast(`${totalPages} page${totalPages === 1 ? "" : "s"} loaded`);
 		} catch (error) {
-			console.error("[ContentCore] Error loading PDF:", error);
+			console.error("[arth.find] Error loading PDF:", error);
 			if (loadingOverlay) loadingOverlay.style.display = "none";
 			docTitle.textContent = "Error loading PDF";
 			showToast(`Failed to load PDF: ${error.message}`);
@@ -1540,11 +1817,16 @@
 
 		// Text Selection & Floating Pill
 		document.addEventListener("mouseup", (e) => {
+			// Never trigger on pill UI or during drag
 			if (floatingPillContainer?.contains(e.target)) return;
+			if (floatingPillContainer?.classList.contains("cc-dragging")) return;
 			setTimeout(showFloatingPill, 60);
 		});
 
 		document.addEventListener("mousedown", (e) => {
+			// Don't dismiss while a drag is in progress
+			if (floatingPillContainer?.classList.contains("cc-dragging")) return;
+			// Only dismiss if the pill is actually visible AND the click is outside it
 			if (floatingPillContainer && !floatingPillContainer.contains(e.target)) {
 				removeFloatingPill();
 			}
@@ -1623,12 +1905,14 @@
 			const tx    = db.transaction(IDB_STORE, "readwrite");
 			const store = tx.objectStore(IDB_STORE);
 			store.put({ buffer: arrayBuffer, name: fileName, page: 1, scale: 1.0, savedAt: Date.now() }, IDB_KEY);
+			// Mark this tab session so navigating to Saved Words and back restores correctly
+			sessionStorage.setItem("arthfindPdfSession", "1");
 			return new Promise((resolve, reject) => {
 				tx.oncomplete = () => { db.close(); resolve(); };
 				tx.onerror    = (e) => { db.close(); reject(e.target.error); };
 			});
 		} catch (err) {
-			console.warn("[ContentCore] IDB save failed:", err);
+			console.warn("[arth.find] IDB save failed:", err);
 		}
 	}
 
@@ -1679,9 +1963,19 @@
 	}
 
 	// Silently restore the last PDF and jump to the saved page + scale
+	// Only restores within the same browser session — not across fresh opens.
 	async function tryRestoreLastPdf() {
 		const record = await loadPdfFromIdb();
 		if (!record?.buffer) return;
+
+		// Check if this is a same-session navigation (e.g. Saved Words → back to PDF)
+		// sessionStorage is cleared when the tab/window is closed, so a fresh open won't have the flag.
+		const sessionId = sessionStorage.getItem("arthfindPdfSession");
+		if (!sessionId) {
+			// Fresh open — don't auto-load the old PDF, but don't delete it either
+			// (user may navigate to saved-words and come back within the same session)
+			return;
+		}
 
 		const blob = new Blob([record.buffer], { type: "application/pdf" });
 		const file = new File([blob], record.name, { type: "application/pdf" });
@@ -1704,5 +1998,17 @@
 	// ── Initialize
 	initEvents();
 	tryRestoreLastPdf();
+
+	// Clear stored PDF when the tab/window is closed or the user navigates away permanently.
+	// pagehide fires for both tab close and navigation; we only want to clear when the page
+	// is NOT being kept in the bfcache (persisted = false), which covers true exits.
+	// For same-session navigation (e.g. → Saved Words), the session flag is already set so
+	// restore still works on the way back, but on a real close the IDB is wiped clean.
+	window.addEventListener("pagehide", (e) => {
+		if (!e.persisted) {
+			// Use sendBeacon-style synchronous IDB delete — best-effort on page unload
+			clearPdfFromIdb();
+		}
+	});
 })();
 
