@@ -3,9 +3,32 @@
 <head>
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>ContentCore Settings</title>
+	<title>Arth.Find Settings</title>
+	<link rel="icon" type="image/png" sizes="32x32" href="icon-32.png">
+	<link rel="icon" type="image/png" sizes="16x16" href="icon-16.png">
+	<link rel="preconnect" href="https://fonts.googleapis.com">
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+	<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 	<link rel="stylesheet" href="themes.css">
 	<style>
+		@font-face {
+			font-family: "Departure Mono";
+			src: url("fonts/DepartureMono-Regular.woff2") format("woff2"),
+			     url("fonts/DepartureMono-Regular.woff") format("woff"),
+			     url("fonts/DepartureMono-Regular.otf") format("opentype");
+			font-weight: 400;
+			font-style: normal;
+			font-display: swap;
+		}
+
+		@font-face {
+			font-family: "Bagnard Sans";
+			src: url("fonts/BagnardSans.otf") format("opentype");
+			font-weight: 400;
+			font-style: normal;
+			font-display: swap;
+		}
+
 		:root {
 			--bg: #f8f9fa;
 			--surface: #ffffff;
@@ -53,6 +76,41 @@
 			background-color: var(--bg);
 			padding: 16px;
 			-webkit-font-smoothing: antialiased;
+
+			/* Modern thin scrollbar — Firefox */
+			scrollbar-width: thin;
+			scrollbar-color: transparent transparent;
+		}
+
+		body:hover {
+			scrollbar-color: rgba(0, 0, 0, 0.15) transparent;
+		}
+
+		/* Modern thin scrollbar — WebKit (Chrome, Edge) */
+		body::-webkit-scrollbar {
+			width: 3px;
+		}
+
+		body::-webkit-scrollbar-track {
+			background: transparent;
+		}
+
+		body::-webkit-scrollbar-thumb {
+			background: transparent;
+			border-radius: 99px;
+			transition: background 0.2s;
+		}
+
+		body:hover::-webkit-scrollbar-thumb {
+			background: rgba(0, 0, 0, 0.15);
+		}
+
+		body::-webkit-scrollbar-thumb:hover {
+			background: rgba(0, 0, 0, 0.28);
+		}
+
+		h1, h2, h3, h4, h5, h6 {
+			font-family: "Space Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 		}
 
 		/* Header */
@@ -72,131 +130,62 @@
 		}
 
 		.brand-badge {
-			width: 32px;
-			height: 32px;
-			background: linear-gradient(135deg, #35644a 0%, #264a36 100%);
-			color: #ffffff;
-			border-radius: var(--radius-md);
 			display: flex;
 			align-items: center;
 			justify-content: center;
-			font-family: Georgia, serif;
-			font-weight: 700;
-			font-size: 15px;
-			box-shadow: var(--shadow-sm);
+			flex-shrink: 0;
 		}
 
 		.brand-text h1 {
-			font-size: 16px;
-			font-weight: 700;
+			font-size: 18px;
+			font-weight: 400;
 			color: var(--text-main);
 			line-height: 1.15;
-		}
-
-		.brand-text p {
-			font-size: 11px;
-			color: var(--text-muted);
-			margin-top: 1px;
+			font-family: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+			letter-spacing: 0.3px;
 		}
 
 		.status-badge {
-			display: inline-flex;
-			align-items: center;
-			gap: 5px;
-			font-size: 11px;
+			font-size: 11.5px;
 			font-weight: 600;
-			padding: 3px 8px;
-			border-radius: 9999px;
 			transition: var(--transition);
 		}
 
-		.status-dot {
-			width: 6px;
-			height: 6px;
-			border-radius: 50%;
-			transition: var(--transition);
-		}
-
-		/* State 1: Connected (Configured) */
+		/* State 1: Connected */
 		.status-badge.status-connected {
-			background: #ecfdf5;
-			border: 1px solid #a7f3d0;
-			color: #065f46;
+			color: #059669;
 		}
 
-		.status-badge.status-connected .status-dot {
-			background-color: #10b981;
-			box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
-		}
-
-		/* State 2: Setup Needed (Unconfigured) */
+		/* State 2: Setup Needed */
 		.status-badge.status-setup {
-			background: #fffbeb;
-			border: 1px solid #fde68a;
-			color: #92400e;
+			color: var(--text-muted);
 		}
 
-		.status-badge.status-setup .status-dot {
-			background-color: #f59e0b;
-			box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.2);
-		}
-
-		/* State 3: Verifying (In-Progress) */
+		/* State 3: Verifying */
 		.status-badge.status-verifying {
-			background: #eff6ff;
-			border: 1px solid #bfdbfe;
-			color: #1e40af;
+			color: #2563eb;
 		}
 
-		.status-badge.status-verifying .status-dot {
-			background-color: #3b82f6;
-			box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25);
-			animation: pulse-dot 1.2s ease-in-out infinite;
-		}
-
-		@keyframes pulse-dot {
-			0%, 100% {
-				opacity: 1;
-				transform: scale(1);
-			}
-			50% {
-				opacity: 0.35;
-				transform: scale(0.85);
-			}
-		}
-
-		/* Card Container */
+		/* Card Container — flat, no box */
 		.card {
-			background: var(--surface);
-			border: 1px solid var(--border);
-			border-radius: var(--radius-lg);
-			padding: 14px;
-			box-shadow: var(--shadow-card);
-			margin-bottom: 12px;
+			margin-bottom: 20px;
 		}
 
-		.card-header {
-			display: flex;
-			align-items: center;
-			gap: 8px;
-			margin-bottom: 12px;
-			padding-bottom: 8px;
-			border-bottom: 1px solid #f3f4f6;
-		}
-
-		.card-header-icon {
-			color: var(--primary);
-			display: flex;
-			align-items: center;
-			justify-content: center;
-		}
-
-		.card-title {
-			font-size: 12px;
-			font-weight: 700;
-			text-transform: uppercase;
+		/* Section label replaces the old card-header */
+		.section-label {
+			font-family: "Departure Mono", monospace;
+			font-size: 11px;
+			font-weight: 400;
 			letter-spacing: 0.5px;
-			color: var(--text-secondary);
+			color: var(--text-muted);
+			margin-bottom: 14px;
+		}
+
+		/* Minimal divider between sections */
+		.section-divider {
+			height: 1px;
+			background: var(--border);
+			margin: 4px 0 20px;
 		}
 
 		/* Form Styling */
@@ -359,6 +348,157 @@
 			animation: fadeIn 0.2s ease-in-out;
 		}
 
+		/* PDF Drop Box */
+		.pdf-drop-zone {
+			display: flex;
+			flex-direction: column;
+			align-items: center;
+			justify-content: center;
+			border: 1.5px dashed var(--border);
+			border-radius: var(--radius-lg);
+			background-color: var(--surface);
+			padding: 13px 14px;
+			cursor: pointer;
+			transition: var(--transition);
+			outline: none;
+			position: relative;
+			overflow: hidden;
+		}
+
+		.pdf-drop-zone:hover {
+			border-color: var(--primary);
+			background-color: var(--surface-hover);
+			box-shadow: var(--shadow-sm);
+		}
+
+		.pdf-drop-zone:focus-visible {
+			border-color: var(--border-focus);
+			box-shadow: 0 0 0 3px var(--primary-ring);
+		}
+
+		.pdf-drop-zone.drag-over {
+			border-color: var(--primary);
+			border-style: solid;
+			background-color: var(--primary-light);
+			box-shadow: 0 0 0 3px var(--primary-ring);
+			transform: scale(1.01);
+		}
+
+		/* Full-popup PDF drop target */
+		.popup-drop-overlay {
+			position: fixed;
+			inset: 0;
+			display: none;
+			align-items: center;
+			justify-content: center;
+			padding: 16px;
+			background: rgba(238, 245, 241, 0.9);
+			border: 2px dashed var(--primary);
+			z-index: 2000;
+			pointer-events: none;
+		}
+
+		.popup-drop-overlay.visible {
+			display: flex;
+			pointer-events: auto;
+		}
+
+		.popup-drop-overlay__message {
+			padding: 14px 18px;
+			border-radius: var(--radius-md);
+			background: var(--surface);
+			box-shadow: var(--shadow-hover);
+			color: var(--primary);
+			font-family: "Space Grotesk", -apple-system, BlinkMacSystemFont, sans-serif;
+			font-size: 14px;
+			font-weight: 700;
+		}
+
+		.pdf-drop-content {
+			display: flex;
+			align-items: center;
+			gap: 12px;
+			width: 100%;
+		}
+
+		.pdf-drop-icon {
+			width: 42px;
+			height: 42px;
+			border-radius: var(--radius-md);
+			background-color: var(--primary-light);
+			color: var(--primary);
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			flex-shrink: 0;
+			transition: var(--transition);
+		}
+
+		.pdf-drop-zone:hover .pdf-drop-icon,
+		.pdf-drop-zone.drag-over .pdf-drop-icon {
+			background-color: var(--primary);
+			color: #ffffff;
+			transform: scale(1.04);
+		}
+
+		.pdf-drop-text {
+			flex: 1;
+			text-align: left;
+			min-width: 0;
+		}
+
+		.pdf-drop-title {
+			font-family: "Space Grotesk", -apple-system, BlinkMacSystemFont, sans-serif;
+			font-size: 12.5px;
+			font-weight: 700;
+			color: var(--text-main);
+			margin-bottom: 2px;
+		}
+
+		.pdf-drop-title .browse-link {
+			color: var(--primary);
+			text-decoration: underline;
+			text-underline-offset: 2px;
+		}
+
+		.pdf-drop-subtitle {
+			font-size: 10.5px;
+			color: var(--text-muted);
+			white-space: nowrap;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			line-height: 1.3;
+		}
+
+		.pdf-drop-status {
+			margin-top: 9px;
+			width: 100%;
+			padding: 6px 10px;
+			border-radius: var(--radius-sm);
+			font-size: 11.5px;
+			font-weight: 500;
+			text-align: left;
+			animation: fadeIn 0.15s ease-in-out;
+		}
+
+		.pdf-drop-status.loading {
+			background-color: var(--primary-light);
+			color: var(--primary);
+			border: 1px solid var(--primary-ring);
+		}
+
+		.pdf-drop-status.success {
+			background-color: var(--success-bg);
+			color: var(--success-text);
+			border: 1px solid var(--success-border);
+		}
+
+		.pdf-drop-status.error {
+			background-color: var(--error-bg);
+			color: var(--error-text);
+			border: 1px solid var(--error-border);
+		}
+
 		#status.success {
 			background-color: var(--success-bg);
 			color: var(--success-text);
@@ -431,6 +571,7 @@
 		}
 
 		.tile-title {
+			font-family: "Space Grotesk", -apple-system, BlinkMacSystemFont, sans-serif;
 			font-size: 12.5px;
 			font-weight: 700;
 			color: var(--text-main);
@@ -601,34 +742,281 @@
 			font-size: 10.5px;
 			color: var(--text-muted);
 		}
+		.api-key-label-row {
+			display: flex;
+			align-items: center;
+			gap: 6px;
+			margin-bottom: 4px;
+		}
+
+		.api-key-label-row label {
+			margin-bottom: 0;
+		}
+
+		.info-icon-btn {
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			width: 16px;
+			height: 16px;
+			border: none;
+			background: none;
+			padding: 0;
+			cursor: pointer;
+			color: var(--text-muted);
+			flex-shrink: 0;
+			transition: color 0.15s;
+			position: relative;
+		}
+
+		.info-icon-btn:hover {
+			color: var(--primary);
+		}
+
+		.api-info-popover {
+			display: none;
+			position: absolute;
+			left: 0;
+			top: calc(100% + 8px);
+			width: calc(100vw - 32px);
+			max-width: 340px;
+			background: var(--surface);
+			border: 1px solid var(--border);
+			border-radius: var(--radius-lg);
+			box-shadow: 0 8px 24px rgba(0,0,0,0.12), 0 2px 6px rgba(0,0,0,0.06);
+			z-index: 999;
+			overflow: hidden;
+			animation: fadeIn 0.15s ease-out;
+		}
+
+		.api-info-popover.open {
+			display: block;
+		}
+
+		.popover-header {
+			padding: 10px 14px 8px;
+			border-bottom: 1px solid var(--border);
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+		}
+
+		.popover-title {
+			font-family: "Space Grotesk", -apple-system, BlinkMacSystemFont, sans-serif;
+			font-size: 12px;
+			font-weight: 700;
+			color: var(--text-main);
+			letter-spacing: 0.01em;
+		}
+
+		.popover-close {
+			background: none;
+			border: none;
+			cursor: pointer;
+			color: var(--text-muted);
+			font-size: 16px;
+			line-height: 1;
+			padding: 0 2px;
+			transition: color 0.15s;
+		}
+
+		.popover-close:hover { color: var(--text-main); }
+
+		.popover-body {
+			padding: 10px 14px 14px;
+			display: flex;
+			flex-direction: column;
+			gap: 12px;
+			max-height: 320px;
+			overflow-y: auto;
+			overflow-x: hidden;
+			/* Firefox — invisible until hover */
+			scrollbar-width: thin;
+			scrollbar-color: transparent transparent;
+			transition: scrollbar-color 0.2s;
+		}
+
+		.popover-body:hover {
+			scrollbar-color: rgba(0, 0, 0, 0.14) transparent;
+		}
+
+		/* WebKit — 2px sliver, invisible at rest */
+		.popover-body::-webkit-scrollbar {
+			width: 2px;
+		}
+
+		.popover-body::-webkit-scrollbar-track {
+			background: transparent;
+		}
+
+		.popover-body::-webkit-scrollbar-thumb {
+			background: transparent;
+			border-radius: 99px;
+		}
+
+		.popover-body:hover::-webkit-scrollbar-thumb {
+			background: rgba(0, 0, 0, 0.14);
+		}
+
+		.provider-block {
+			display: flex;
+			flex-direction: column;
+			gap: 5px;
+		}
+
+		.provider-name-row {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+		}
+
+		.provider-name {
+			font-family: "Space Grotesk", -apple-system, BlinkMacSystemFont, sans-serif;
+			font-size: 12px;
+			font-weight: 700;
+			color: var(--text-main);
+			display: flex;
+			align-items: center;
+			gap: 5px;
+		}
+
+		.provider-badge {
+			font-size: 9px;
+			font-weight: 700;
+			padding: 1px 6px;
+			border-radius: 9999px;
+			background: #ecfdf5;
+			color: #065f46;
+			border: 1px solid #a7f3d0;
+			letter-spacing: 0.03em;
+		}
+
+		.provider-link {
+			font-size: 10.5px;
+			color: var(--primary);
+			text-decoration: none;
+			display: inline-flex;
+			align-items: center;
+			gap: 3px;
+			font-weight: 500;
+		}
+
+		.provider-link:hover { text-decoration: underline; }
+
+		.provider-steps {
+			list-style: none;
+			padding: 0;
+			margin: 0;
+			display: flex;
+			flex-direction: column;
+			gap: 3px;
+		}
+
+		.provider-steps li {
+			display: flex;
+			align-items: flex-start;
+			gap: 7px;
+			font-size: 11px;
+			color: var(--text-secondary);
+			line-height: 1.5;
+			word-break: break-word;
+			overflow-wrap: anywhere;
+		}
+
+		.provider-steps li > span.step-num {
+			flex-shrink: 0;
+		}
+
+		/* Wrap the text portion so it doesn't bleed out */
+		.provider-steps li > span:not(.step-num),
+		.provider-steps li > :not(.step-num) {
+			min-width: 0;
+			flex: 1;
+		}
+
+		.provider-steps code {
+			font-family: ui-monospace, "SFMono-Regular", Menlo, Monaco, Consolas, monospace;
+			font-size: 10.5px;
+			background: #f3f4f6;
+			border-radius: 3px;
+			padding: 1px 4px;
+			word-break: break-all;
+			overflow-wrap: anywhere;
+			display: inline;
+		}
+
+		.step-num {
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			min-width: 16px;
+			height: 16px;
+			border-radius: 50%;
+			background: var(--primary-light);
+			color: var(--primary);
+			font-size: 9.5px;
+			font-weight: 700;
+			flex-shrink: 0;
+			margin-top: 1px;
+		}
+
+		.popover-divider {
+			height: 1px;
+			background: var(--border);
+			margin: 0 -14px;
+		}
 	</style>
 </head>
 <body>
 	<!-- Header -->
 	<header class="header">
 		<div class="brand-group">
-			<div class="brand-badge" aria-hidden="true">CC</div>
+			<div class="brand-badge" aria-hidden="true">
+				<svg xmlns="http://www.w3.org/2000/svg" viewBox="-20 -20 851.34 566.99" width="26" height="17" aria-hidden="true" focusable="false">
+					<g transform="translate(-60.101763,581.986566) scale(0.1,-0.1)" fill="#111827" stroke="none">
+						<path d="M2402 5808 c-20 -20 -14 -32 35 -73 26 -22 124 -114 216 -205 93 -91 176 -168 186 -171 9 -4 459 -7 1000 -8 783 0 986 -3 993 -13 4 -7 8 -992 8 -2188 l1 -2175 173 -177 c96 -97 186 -193 201 -212 15 -20 36 -36 46 -36 18 0 19 59 21 2398 l3 2397 1465 5 1465 5 80 65 c44 36 139 119 211 185 71 66 148 135 170 152 82 67 337 62 -3130 63 -2447 0 -3134 -2 -3144 -12z"/>
+						<path d="M3265 4478 c-27 -24 -106 -92 -175 -153 -69 -61 -152 -133 -185 -160 -70 -59 -75 -64 -68 -82 4 -9 30 -13 98 -13 51 0 117 -5 146 -10 30 -6 84 -15 121 -19 146 -19 354 -129 480 -254 76 -74 187 -239 218 -322 12 -33 27 -69 33 -80 11 -22 32 -134 42 -230 12 -108 -35 -356 -81 -430 -6 -11 -15 -30 -19 -43 -20 -69 -160 -246 -257 -328 -284 -237 -593 -339 -973 -320 -194 9 -399 52 -530 111 -120 55 -144 65 -149 65 -9 0 -188 105 -269 158 -101 66 -142 98 -262 206 -55 50 -110 99 -123 111 -13 11 -54 56 -90 100 -37 44 -77 91 -89 104 -61 64 -304 404 -365 511 -10 19 -30 53 -43 75 -14 22 -29 51 -35 65 -18 41 -60 90 -77 90 -12 0 -14 -9 -10 -42 11 -107 68 -320 143 -543 45 -132 165 -371 252 -499 130 -194 384 -474 498 -550 21 -14 66 -45 99 -69 196 -141 442 -256 685 -317 208 -53 218 -54 450 -54 210 0 233 2 345 28 65 15 126 31 135 35 8 5 33 12 55 16 22 4 59 15 82 26 23 10 46 19 51 19 13 0 225 109 275 141 93 59 228 169 301 243 149 153 288 363 342 516 9 25 22 61 29 80 32 88 56 184 71 290 44 307 -52 720 -224 963 -103 146 -269 323 -367 392 -159 111 -257 165 -326 180 -19 4 -46 14 -61 21 -15 8 -49 14 -75 14 -42 0 -54 -6 -98 -42z"/>
+						<path d="M5721 4036 c-10 -11 -15 -77 -19 -229 -4 -191 -3 -214 12 -226 14 -12 168 -14 969 -15 554 -1 960 2 972 8 22 10 82 64 255 231 63 61 142 134 174 162 48 42 57 55 47 66 -9 12 -194 15 -1204 16 -1065 2 -1195 0 -1206 -13z"/>
+					</g>
+				</svg>
+			</div>
 			<div class="brand-text">
-				<h1>ContentCore</h1>
-				<p>AI-powered reading assistant</p>
+				<h1>Arth.Find</h1>
 			</div>
 		</div>
 		<div id="connection-status-badge" class="status-badge status-setup">
-			<span class="status-dot"></span>
 			<span id="connection-status-text">Setup needed</span>
 		</div>
 	</header>
 
-	<!-- LLM Provider Setup Card -->
+	<!-- PDF Document Drop Box -->
 	<div class="card">
-		<div class="card-header">
-			<div class="card-header-icon">
-				<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-					<path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
-				</svg>
+		<div class="section-label">Read PDF</div>
+		<div class="pdf-drop-zone" id="pdf-drop-zone" role="button" tabindex="0" aria-label="Upload PDF to read">
+			<input type="file" id="pdf-file-input" accept="application/pdf" style="display: none;">
+			<div class="pdf-drop-content">
+				<div class="pdf-drop-icon" aria-hidden="true">
+					<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+						<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+						<polyline points="14 2 14 8 20 8"></polyline>
+						<line x1="12" y1="18" x2="12" y2="12"></line>
+						<polyline points="9 15 12 12 15 15"></polyline>
+					</svg>
+				</div>
+				<div class="pdf-drop-text">
+					<div class="pdf-drop-title">Drop PDF here or <span class="browse-link">browse</span></div>
+					<div class="pdf-drop-subtitle">Opens directly in Arth.Find Reader</div>
+				</div>
 			</div>
-			<span class="card-title">LLM Provider Setup</span>
+			<div class="pdf-drop-status" id="pdf-drop-status" style="display: none;"></div>
 		</div>
+	</div>
+
+	<div class="section-divider"></div>
+
+	<!-- LLM Provider Setup -->
+	<div class="card">
+		<div class="section-label">LLM Provider Setup</div>
 
 		<form id="settings-form">
 			<div class="form-group">
@@ -643,7 +1031,85 @@
 			</div>
 
 			<div class="form-group">
-				<label for="llm-api-key">Provider API key <span class="label-helper">(Encrypted)</span></label>
+				<div class="api-key-label-row" style="position: relative;">
+					<label for="llm-api-key">Provider API key <span class="label-helper">(Encrypted)</span></label>
+					<button type="button" class="info-icon-btn" id="api-key-info-btn" aria-label="How to get an API key" title="How to get an API key">
+						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<circle cx="12" cy="12" r="10"/>
+							<line x1="12" y1="16" x2="12" y2="12"/>
+							<line x1="12" y1="8" x2="12.01" y2="8"/>
+						</svg>
+					</button>
+
+					<!-- API Key Info Popover -->
+					<div class="api-info-popover" id="api-info-popover" role="dialog" aria-label="How to get an API key">
+						<div class="popover-header">
+							<span class="popover-title">How to get your API key</span>
+							<button type="button" class="popover-close" id="api-info-close" aria-label="Close">&times;</button>
+						</div>
+						<div class="popover-body">
+
+							<!-- NVIDIA NIM -->
+							<div class="provider-block">
+								<div class="provider-name-row">
+									<span class="provider-name">
+										NVIDIA NIM
+										<span class="provider-badge">Recommended</span>
+									</span>
+									<a class="provider-link" href="https://developer.nvidia.com/nim" target="_blank" rel="noopener noreferrer">
+										Visit
+										<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+									</a>
+								</div>
+								<ol class="provider-steps">
+									<li><span class="step-num">1</span><span>Go to developer.nvidia.com/nim and click <strong>Sign Up</strong></span></li>
+									<li><span class="step-num">2</span><span>Create a free account with your email</span></li>
+									<li><span class="step-num">3</span><span>From the dashboard, click <strong>Generate API Key</strong></span></li>
+									<li><span class="step-num">4</span><span>Copy the key starting with <code>nvapi-...</code> and paste it here</span></li>
+								</ol>
+							</div>
+
+							<div class="popover-divider"></div>
+
+							<!-- Google Gemini -->
+							<div class="provider-block">
+								<div class="provider-name-row">
+									<span class="provider-name">Google Gemini</span>
+									<a class="provider-link" href="https://aistudio.google.com/api-keys" target="_blank" rel="noopener noreferrer">
+										Visit
+										<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+									</a>
+								</div>
+								<ol class="provider-steps">
+									<li><span class="step-num">1</span><span>Go to aistudio.google.com and sign in with your Google account</span></li>
+									<li><span class="step-num">2</span><span>Click <strong>Get API Key</strong> in the left sidebar</span></li>
+									<li><span class="step-num">3</span><span>Click <strong>Create API key</strong> and select a project</span></li>
+									<li><span class="step-num">4</span><span>Copy the key starting with <code>AIza...</code> and paste it here</span></li>
+								</ol>
+							</div>
+
+							<div class="popover-divider"></div>
+
+							<!-- OpenAI -->
+							<div class="provider-block">
+								<div class="provider-name-row">
+									<span class="provider-name">OpenAI</span>
+									<a class="provider-link" href="https://platform.openai.com/home" target="_blank" rel="noopener noreferrer">
+										Visit
+										<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+									</a>
+								</div>
+								<ol class="provider-steps">
+									<li><span class="step-num">1</span><span>Go to platform.openai.com and click <strong>Sign up</strong></span></li>
+									<li><span class="step-num">2</span><span>Verify your email and set up billing (required for API access)</span></li>
+									<li><span class="step-num">3</span><span>Go to <strong>API Keys</strong> in the left menu and click <strong>Create new secret key</strong></span></li>
+									<li><span class="step-num">4</span><span>Copy the key starting with <code>sk-...</code> — it won't be shown again</span></li>
+								</ol>
+							</div>
+
+						</div>
+					</div>
+				</div>
 				<input id="llm-api-key" type="password" placeholder="Enter or replace your provider key" autocomplete="off">
 				<span id="api-key-error" class="field-error" style="display: none;">Please enter your provider API key.</span>
 				<span class="field-hint">Sent once to backend for encrypted storage.</span>
@@ -677,19 +1143,9 @@
 	</div>
 
 	<!-- Card Appearance -->
+	<div class="section-divider"></div>
 	<div class="card">
-		<div class="card-header">
-			<div class="card-header-icon">
-				<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-					<circle cx="13.5" cy="6.5" r=".5"></circle>
-					<circle cx="17.5" cy="10.5" r=".5"></circle>
-					<circle cx="8.5" cy="7.5" r=".5"></circle>
-					<circle cx="6.5" cy="12.5" r=".5"></circle>
-					<path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"></path>
-				</svg>
-			</div>
-			<span class="card-title">Card Appearance</span>
-		</div>
+		<div class="section-label">Card Appearance</div>
 
 		<div class="mode-toggle" role="tablist" aria-label="Theme brightness">
 			<button type="button" role="tab" class="mode" data-mode="light" aria-selected="true">Light</button>
@@ -753,6 +1209,10 @@
 		<div>
 			<strong>Tip:</strong> Highlight any text or word on web pages or PDF files and click <em>"Explain this"</em> for AI explanations.
 		</div>
+	</div>
+
+	<div class="popup-drop-overlay" id="popup-drop-overlay" aria-hidden="true">
+		<div class="popup-drop-overlay__message">Drop PDF to open</div>
 	</div>
 
 	<script src="crypto.js"></script>

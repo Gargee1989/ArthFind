@@ -281,6 +281,166 @@ if (settingsForm) {
 }
 
 // ---------------------------------------------------------------------------
+// PDF Upload Drop Box
+// ---------------------------------------------------------------------------
+
+const pdfDropZone = document.querySelector("#pdf-drop-zone");
+const pdfFileInput = document.querySelector("#pdf-file-input");
+const pdfDropStatus = document.querySelector("#pdf-drop-status");
+const popupDropOverlay = document.querySelector("#popup-drop-overlay");
+
+if (pdfDropZone && pdfFileInput) {
+	let popupDragDepth = 0;
+
+	function isFileDrag(event) {
+		return event.dataTransfer && Array.from(event.dataTransfer.types || []).includes("Files");
+	}
+
+	function setPopupDropOverlay(visible) {
+		if (!popupDropOverlay) return;
+		popupDropOverlay.classList.toggle("visible", visible);
+		popupDropOverlay.setAttribute("aria-hidden", String(!visible));
+	}
+
+	function openPdfIdb() {
+		return new Promise((resolve, reject) => {
+			const req = indexedDB.open("contentCorePdfStore", 1);
+			req.onupgradeneeded = (e) => {
+				e.target.result.createObjectStore("pdfs");
+			};
+			req.onsuccess = (e) => resolve(e.target.result);
+			req.onerror   = (e) => reject(e.target.error);
+		});
+	}
+
+	async function handlePdfUpload(file) {
+		if (!file) return;
+
+		const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+		if (!isPdf) {
+			if (pdfDropStatus) {
+				pdfDropStatus.textContent = "Please select a valid PDF file.";
+				pdfDropStatus.className = "pdf-drop-status error";
+				pdfDropStatus.style.display = "block";
+			}
+			return;
+		}
+
+		if (pdfDropStatus) {
+			pdfDropStatus.textContent = `Loading ${file.name}…`;
+			pdfDropStatus.className = "pdf-drop-status loading";
+			pdfDropStatus.style.display = "block";
+		}
+
+		try {
+			const arrayBuffer = await file.arrayBuffer();
+			const db = await openPdfIdb();
+			const tx = db.transaction("pdfs", "readwrite");
+			const store = tx.objectStore("pdfs");
+			store.put({
+				buffer: arrayBuffer,
+				name: file.name,
+				page: 1,
+				scale: 1.0,
+				savedAt: Date.now()
+			}, "lastPdf");
+
+			await new Promise((resolve, reject) => {
+				tx.oncomplete = () => { db.close(); resolve(); };
+				tx.onerror = (e) => { db.close(); reject(e.target.error); };
+			});
+
+			if (pdfDropStatus) {
+				pdfDropStatus.textContent = `✓ Opening ${file.name}…`;
+				pdfDropStatus.className = "pdf-drop-status success";
+				pdfDropStatus.style.display = "block";
+			}
+
+			const targetUrl = chrome.runtime.getURL("pdf-viewer.html?fromUpload=1");
+			if (chrome.tabs && chrome.tabs.create) {
+				await chrome.tabs.create({ url: targetUrl });
+			} else {
+				window.open(targetUrl, "_blank");
+			}
+		} catch (err) {
+			console.error("Failed to load PDF:", err);
+			if (pdfDropStatus) {
+				pdfDropStatus.textContent = "Failed to load PDF. Please try again.";
+				pdfDropStatus.className = "pdf-drop-status error";
+				pdfDropStatus.style.display = "block";
+			}
+		}
+	}
+
+	pdfDropZone.addEventListener("click", () => {
+		pdfFileInput.click();
+	});
+
+	pdfDropZone.addEventListener("keydown", (e) => {
+		if (e.key === "Enter" || e.key === " ") {
+			e.preventDefault();
+			pdfFileInput.click();
+		}
+	});
+
+	pdfFileInput.addEventListener("change", () => {
+		if (pdfFileInput.files && pdfFileInput.files[0]) {
+			handlePdfUpload(pdfFileInput.files[0]);
+		}
+	});
+
+	pdfDropZone.addEventListener("dragover", (e) => {
+		e.preventDefault();
+		e.stopPropagation();
+		pdfDropZone.classList.add("drag-over");
+	});
+
+	pdfDropZone.addEventListener("dragleave", (e) => {
+		e.preventDefault();
+		e.stopPropagation();
+		pdfDropZone.classList.remove("drag-over");
+	});
+
+	pdfDropZone.addEventListener("drop", (e) => {
+		e.preventDefault();
+		e.stopPropagation();
+		pdfDropZone.classList.remove("drag-over");
+		const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+		if (file) {
+			handlePdfUpload(file);
+		}
+	});
+
+	// Accept PDFs dropped anywhere in the popup, including outside the upload card.
+	document.addEventListener("dragenter", (e) => {
+		if (!isFileDrag(e)) return;
+		e.preventDefault();
+		popupDragDepth += 1;
+		setPopupDropOverlay(true);
+	});
+
+	document.addEventListener("dragover", (e) => {
+		if (!isFileDrag(e)) return;
+		e.preventDefault();
+	});
+
+	document.addEventListener("dragleave", (e) => {
+		if (!isFileDrag(e)) return;
+		popupDragDepth = Math.max(0, popupDragDepth - 1);
+		if (popupDragDepth === 0) setPopupDropOverlay(false);
+	});
+
+	document.addEventListener("drop", (e) => {
+		if (!isFileDrag(e)) return;
+		e.preventDefault();
+		popupDragDepth = 0;
+		setPopupDropOverlay(false);
+		const file = e.dataTransfer.files && e.dataTransfer.files[0];
+		if (file) handlePdfUpload(file);
+	});
+}
+
+// ---------------------------------------------------------------------------
 // Theme picker
 // ---------------------------------------------------------------------------
 
@@ -360,3 +520,44 @@ if (themeGrid) {
 
 	renderThemes();
 }
+
+// ── API Key Info Popover ───────────────────────────────────────────────────
+(function () {
+	const infoBtn   = document.getElementById("api-key-info-btn");
+	const popover   = document.getElementById("api-info-popover");
+	const closeBtn  = document.getElementById("api-info-close");
+
+	if (!infoBtn || !popover) return;
+
+	function openPopover() {
+		popover.classList.add("open");
+		infoBtn.setAttribute("aria-expanded", "true");
+	}
+
+	function closePopover() {
+		popover.classList.remove("open");
+		infoBtn.setAttribute("aria-expanded", "false");
+	}
+
+	infoBtn.addEventListener("click", (e) => {
+		e.stopPropagation();
+		popover.classList.contains("open") ? closePopover() : openPopover();
+	});
+
+	closeBtn.addEventListener("click", (e) => {
+		e.stopPropagation();
+		closePopover();
+	});
+
+	// Close on outside click
+	document.addEventListener("click", (e) => {
+		if (!popover.contains(e.target) && e.target !== infoBtn) {
+			closePopover();
+		}
+	});
+
+	// Close on Escape
+	document.addEventListener("keydown", (e) => {
+		if (e.key === "Escape") closePopover();
+	});
+})();
