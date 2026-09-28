@@ -287,8 +287,21 @@ if (settingsForm) {
 const pdfDropZone = document.querySelector("#pdf-drop-zone");
 const pdfFileInput = document.querySelector("#pdf-file-input");
 const pdfDropStatus = document.querySelector("#pdf-drop-status");
+const popupDropOverlay = document.querySelector("#popup-drop-overlay");
 
 if (pdfDropZone && pdfFileInput) {
+	let popupDragDepth = 0;
+
+	function isFileDrag(event) {
+		return event.dataTransfer && Array.from(event.dataTransfer.types || []).includes("Files");
+	}
+
+	function setPopupDropOverlay(visible) {
+		if (!popupDropOverlay) return;
+		popupDropOverlay.classList.toggle("visible", visible);
+		popupDropOverlay.setAttribute("aria-hidden", String(!visible));
+	}
+
 	function openPdfIdb() {
 		return new Promise((resolve, reject) => {
 			const req = indexedDB.open("contentCorePdfStore", 1);
@@ -396,6 +409,34 @@ if (pdfDropZone && pdfFileInput) {
 		if (file) {
 			handlePdfUpload(file);
 		}
+	});
+
+	// Accept PDFs dropped anywhere in the popup, including outside the upload card.
+	document.addEventListener("dragenter", (e) => {
+		if (!isFileDrag(e)) return;
+		e.preventDefault();
+		popupDragDepth += 1;
+		setPopupDropOverlay(true);
+	});
+
+	document.addEventListener("dragover", (e) => {
+		if (!isFileDrag(e)) return;
+		e.preventDefault();
+	});
+
+	document.addEventListener("dragleave", (e) => {
+		if (!isFileDrag(e)) return;
+		popupDragDepth = Math.max(0, popupDragDepth - 1);
+		if (popupDragDepth === 0) setPopupDropOverlay(false);
+	});
+
+	document.addEventListener("drop", (e) => {
+		if (!isFileDrag(e)) return;
+		e.preventDefault();
+		popupDragDepth = 0;
+		setPopupDropOverlay(false);
+		const file = e.dataTransfer.files && e.dataTransfer.files[0];
+		if (file) handlePdfUpload(file);
 	});
 }
 

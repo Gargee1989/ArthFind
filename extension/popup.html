@@ -384,6 +384,36 @@
 			transform: scale(1.01);
 		}
 
+		/* Full-popup PDF drop target */
+		.popup-drop-overlay {
+			position: fixed;
+			inset: 0;
+			display: none;
+			align-items: center;
+			justify-content: center;
+			padding: 16px;
+			background: rgba(238, 245, 241, 0.9);
+			border: 2px dashed var(--primary);
+			z-index: 2000;
+			pointer-events: none;
+		}
+
+		.popup-drop-overlay.visible {
+			display: flex;
+			pointer-events: auto;
+		}
+
+		.popup-drop-overlay__message {
+			padding: 14px 18px;
+			border-radius: var(--radius-md);
+			background: var(--surface);
+			box-shadow: var(--shadow-hover);
+			color: var(--primary);
+			font-family: "Space Grotesk", -apple-system, BlinkMacSystemFont, sans-serif;
+			font-size: 14px;
+			font-weight: 700;
+		}
+
 		.pdf-drop-content {
 			display: flex;
 			align-items: center;
@@ -1179,6 +1209,10 @@
 		<div>
 			<strong>Tip:</strong> Highlight any text or word on web pages or PDF files and click <em>"Explain this"</em> for AI explanations.
 		</div>
+	</div>
+
+	<div class="popup-drop-overlay" id="popup-drop-overlay" aria-hidden="true">
+		<div class="popup-drop-overlay__message">Drop PDF to open</div>
 	</div>
 
 	<script src="crypto.js"></script>
