@@ -1968,13 +1968,19 @@
 		const record = await loadPdfFromIdb();
 		if (!record?.buffer) return;
 
-		// Check if this is a same-session navigation (e.g. Saved Words → back to PDF)
+		// Check if this is a same-session navigation or uploaded from popup
 		// sessionStorage is cleared when the tab/window is closed, so a fresh open won't have the flag.
+		const urlParams = new URLSearchParams(window.location.search);
+		const fromUpload = urlParams.get("fromUpload");
 		const sessionId = sessionStorage.getItem("arthfindPdfSession");
-		if (!sessionId) {
+		if (!sessionId && !fromUpload) {
 			// Fresh open — don't auto-load the old PDF, but don't delete it either
 			// (user may navigate to saved-words and come back within the same session)
 			return;
+		}
+
+		if (fromUpload) {
+			sessionStorage.setItem("arthfindPdfSession", "1");
 		}
 
 		const blob = new Blob([record.buffer], { type: "application/pdf" });

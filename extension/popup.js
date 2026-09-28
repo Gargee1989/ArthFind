@@ -281,6 +281,125 @@ if (settingsForm) {
 }
 
 // ---------------------------------------------------------------------------
+// PDF Upload Drop Box
+// ---------------------------------------------------------------------------
+
+const pdfDropZone = document.querySelector("#pdf-drop-zone");
+const pdfFileInput = document.querySelector("#pdf-file-input");
+const pdfDropStatus = document.querySelector("#pdf-drop-status");
+
+if (pdfDropZone && pdfFileInput) {
+	function openPdfIdb() {
+		return new Promise((resolve, reject) => {
+			const req = indexedDB.open("contentCorePdfStore", 1);
+			req.onupgradeneeded = (e) => {
+				e.target.result.createObjectStore("pdfs");
+			};
+			req.onsuccess = (e) => resolve(e.target.result);
+			req.onerror   = (e) => reject(e.target.error);
+		});
+	}
+
+	async function handlePdfUpload(file) {
+		if (!file) return;
+
+		const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+		if (!isPdf) {
+			if (pdfDropStatus) {
+				pdfDropStatus.textContent = "Please select a valid PDF file.";
+				pdfDropStatus.className = "pdf-drop-status error";
+				pdfDropStatus.style.display = "block";
+			}
+			return;
+		}
+
+		if (pdfDropStatus) {
+			pdfDropStatus.textContent = `Loading ${file.name}…`;
+			pdfDropStatus.className = "pdf-drop-status loading";
+			pdfDropStatus.style.display = "block";
+		}
+
+		try {
+			const arrayBuffer = await file.arrayBuffer();
+			const db = await openPdfIdb();
+			const tx = db.transaction("pdfs", "readwrite");
+			const store = tx.objectStore("pdfs");
+			store.put({
+				buffer: arrayBuffer,
+				name: file.name,
+				page: 1,
+				scale: 1.0,
+				savedAt: Date.now()
+			}, "lastPdf");
+
+			await new Promise((resolve, reject) => {
+				tx.oncomplete = () => { db.close(); resolve(); };
+				tx.onerror = (e) => { db.close(); reject(e.target.error); };
+			});
+
+			if (pdfDropStatus) {
+				pdfDropStatus.textContent = `✓ Opening ${file.name}…`;
+				pdfDropStatus.className = "pdf-drop-status success";
+				pdfDropStatus.style.display = "block";
+			}
+
+			const targetUrl = chrome.runtime.getURL("pdf-viewer.html?fromUpload=1");
+			if (chrome.tabs && chrome.tabs.create) {
+				await chrome.tabs.create({ url: targetUrl });
+			} else {
+				window.open(targetUrl, "_blank");
+			}
+		} catch (err) {
+			console.error("Failed to load PDF:", err);
+			if (pdfDropStatus) {
+				pdfDropStatus.textContent = "Failed to load PDF. Please try again.";
+				pdfDropStatus.className = "pdf-drop-status error";
+				pdfDropStatus.style.display = "block";
+			}
+		}
+	}
+
+	pdfDropZone.addEventListener("click", () => {
+		pdfFileInput.click();
+	});
+
+	pdfDropZone.addEventListener("keydown", (e) => {
+		if (e.key === "Enter" || e.key === " ") {
+			e.preventDefault();
+			pdfFileInput.click();
+		}
+	});
+
+	pdfFileInput.addEventListener("change", () => {
+		if (pdfFileInput.files && pdfFileInput.files[0]) {
+			handlePdfUpload(pdfFileInput.files[0]);
+		}
+	});
+
+	pdfDropZone.addEventListener("dragover", (e) => {
+		e.preventDefault();
+		e.stopPropagation();
+		pdfDropZone.classList.add("drag-over");
+	});
+
+	pdfDropZone.addEventListener("dragleave", (e) => {
+		e.preventDefault();
+		e.stopPropagation();
+		pdfDropZone.classList.remove("drag-over");
+	});
+
+	pdfDropZone.addEventListener("drop", (e) => {
+		e.preventDefault();
+		e.stopPropagation();
+		pdfDropZone.classList.remove("drag-over");
+		const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+		if (file) {
+			handlePdfUpload(file);
+		}
+	});
+}
+
+// ---------------------------------------------------------------------------
 // Theme picker
 // ---------------------------------------------------------------------------
 

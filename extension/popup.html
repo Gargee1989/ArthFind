@@ -4,10 +4,31 @@
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<title>Arth.Find Settings</title>
+	<link rel="icon" type="image/png" sizes="32x32" href="icon-32.png">
+	<link rel="icon" type="image/png" sizes="16x16" href="icon-16.png">
 	<link rel="preconnect" href="https://fonts.googleapis.com">
-	<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@600;700&display=swap" rel="stylesheet">
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+	<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 	<link rel="stylesheet" href="themes.css">
 	<style>
+		@font-face {
+			font-family: "Departure Mono";
+			src: url("fonts/DepartureMono-Regular.woff2") format("woff2"),
+			     url("fonts/DepartureMono-Regular.woff") format("woff"),
+			     url("fonts/DepartureMono-Regular.otf") format("opentype");
+			font-weight: 400;
+			font-style: normal;
+			font-display: swap;
+		}
+
+		@font-face {
+			font-family: "Bagnard Sans";
+			src: url("fonts/BagnardSans.otf") format("opentype");
+			font-weight: 400;
+			font-style: normal;
+			font-display: swap;
+		}
+
 		:root {
 			--bg: #f8f9fa;
 			--surface: #ffffff;
@@ -55,6 +76,41 @@
 			background-color: var(--bg);
 			padding: 16px;
 			-webkit-font-smoothing: antialiased;
+
+			/* Modern thin scrollbar — Firefox */
+			scrollbar-width: thin;
+			scrollbar-color: transparent transparent;
+		}
+
+		body:hover {
+			scrollbar-color: rgba(0, 0, 0, 0.15) transparent;
+		}
+
+		/* Modern thin scrollbar — WebKit (Chrome, Edge) */
+		body::-webkit-scrollbar {
+			width: 3px;
+		}
+
+		body::-webkit-scrollbar-track {
+			background: transparent;
+		}
+
+		body::-webkit-scrollbar-thumb {
+			background: transparent;
+			border-radius: 99px;
+			transition: background 0.2s;
+		}
+
+		body:hover::-webkit-scrollbar-thumb {
+			background: rgba(0, 0, 0, 0.15);
+		}
+
+		body::-webkit-scrollbar-thumb:hover {
+			background: rgba(0, 0, 0, 0.28);
+		}
+
+		h1, h2, h3, h4, h5, h6 {
+			font-family: "Space Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 		}
 
 		/* Header */
@@ -81,11 +137,12 @@
 		}
 
 		.brand-text h1 {
-			font-size: 16px;
-			font-weight: 700;
+			font-size: 18px;
+			font-weight: 400;
 			color: var(--text-main);
 			line-height: 1.15;
-			font-family: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, sans-serif;
+			font-family: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+			letter-spacing: 0.3px;
 		}
 
 		.status-badge {
@@ -116,10 +173,10 @@
 
 		/* Section label replaces the old card-header */
 		.section-label {
-			font-size: 10.5px;
-			font-weight: 700;
-			text-transform: uppercase;
-			letter-spacing: 0.6px;
+			font-family: "Departure Mono", monospace;
+			font-size: 11px;
+			font-weight: 400;
+			letter-spacing: 0.5px;
 			color: var(--text-muted);
 			margin-bottom: 14px;
 		}
@@ -291,6 +348,127 @@
 			animation: fadeIn 0.2s ease-in-out;
 		}
 
+		/* PDF Drop Box */
+		.pdf-drop-zone {
+			display: flex;
+			flex-direction: column;
+			align-items: center;
+			justify-content: center;
+			border: 1.5px dashed var(--border);
+			border-radius: var(--radius-lg);
+			background-color: var(--surface);
+			padding: 13px 14px;
+			cursor: pointer;
+			transition: var(--transition);
+			outline: none;
+			position: relative;
+			overflow: hidden;
+		}
+
+		.pdf-drop-zone:hover {
+			border-color: var(--primary);
+			background-color: var(--surface-hover);
+			box-shadow: var(--shadow-sm);
+		}
+
+		.pdf-drop-zone:focus-visible {
+			border-color: var(--border-focus);
+			box-shadow: 0 0 0 3px var(--primary-ring);
+		}
+
+		.pdf-drop-zone.drag-over {
+			border-color: var(--primary);
+			border-style: solid;
+			background-color: var(--primary-light);
+			box-shadow: 0 0 0 3px var(--primary-ring);
+			transform: scale(1.01);
+		}
+
+		.pdf-drop-content {
+			display: flex;
+			align-items: center;
+			gap: 12px;
+			width: 100%;
+		}
+
+		.pdf-drop-icon {
+			width: 42px;
+			height: 42px;
+			border-radius: var(--radius-md);
+			background-color: var(--primary-light);
+			color: var(--primary);
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			flex-shrink: 0;
+			transition: var(--transition);
+		}
+
+		.pdf-drop-zone:hover .pdf-drop-icon,
+		.pdf-drop-zone.drag-over .pdf-drop-icon {
+			background-color: var(--primary);
+			color: #ffffff;
+			transform: scale(1.04);
+		}
+
+		.pdf-drop-text {
+			flex: 1;
+			text-align: left;
+			min-width: 0;
+		}
+
+		.pdf-drop-title {
+			font-family: "Space Grotesk", -apple-system, BlinkMacSystemFont, sans-serif;
+			font-size: 12.5px;
+			font-weight: 700;
+			color: var(--text-main);
+			margin-bottom: 2px;
+		}
+
+		.pdf-drop-title .browse-link {
+			color: var(--primary);
+			text-decoration: underline;
+			text-underline-offset: 2px;
+		}
+
+		.pdf-drop-subtitle {
+			font-size: 10.5px;
+			color: var(--text-muted);
+			white-space: nowrap;
+			overflow: hidden;
+			text-overflow: ellipsis;
+			line-height: 1.3;
+		}
+
+		.pdf-drop-status {
+			margin-top: 9px;
+			width: 100%;
+			padding: 6px 10px;
+			border-radius: var(--radius-sm);
+			font-size: 11.5px;
+			font-weight: 500;
+			text-align: left;
+			animation: fadeIn 0.15s ease-in-out;
+		}
+
+		.pdf-drop-status.loading {
+			background-color: var(--primary-light);
+			color: var(--primary);
+			border: 1px solid var(--primary-ring);
+		}
+
+		.pdf-drop-status.success {
+			background-color: var(--success-bg);
+			color: var(--success-text);
+			border: 1px solid var(--success-border);
+		}
+
+		.pdf-drop-status.error {
+			background-color: var(--error-bg);
+			color: var(--error-text);
+			border: 1px solid var(--error-border);
+		}
+
 		#status.success {
 			background-color: var(--success-bg);
 			color: var(--success-text);
@@ -363,6 +541,7 @@
 		}
 
 		.tile-title {
+			font-family: "Space Grotesk", -apple-system, BlinkMacSystemFont, sans-serif;
 			font-size: 12.5px;
 			font-weight: 700;
 			color: var(--text-main);
@@ -593,6 +772,7 @@
 		}
 
 		.popover-title {
+			font-family: "Space Grotesk", -apple-system, BlinkMacSystemFont, sans-serif;
 			font-size: 12px;
 			font-weight: 700;
 			color: var(--text-main);
@@ -661,6 +841,7 @@
 		}
 
 		.provider-name {
+			font-family: "Space Grotesk", -apple-system, BlinkMacSystemFont, sans-serif;
 			font-size: 12px;
 			font-weight: 700;
 			color: var(--text-main);
@@ -777,6 +958,31 @@
 			<span id="connection-status-text">Setup needed</span>
 		</div>
 	</header>
+
+	<!-- PDF Document Drop Box -->
+	<div class="card">
+		<div class="section-label">Read PDF</div>
+		<div class="pdf-drop-zone" id="pdf-drop-zone" role="button" tabindex="0" aria-label="Upload PDF to read">
+			<input type="file" id="pdf-file-input" accept="application/pdf" style="display: none;">
+			<div class="pdf-drop-content">
+				<div class="pdf-drop-icon" aria-hidden="true">
+					<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+						<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+						<polyline points="14 2 14 8 20 8"></polyline>
+						<line x1="12" y1="18" x2="12" y2="12"></line>
+						<polyline points="9 15 12 12 15 15"></polyline>
+					</svg>
+				</div>
+				<div class="pdf-drop-text">
+					<div class="pdf-drop-title">Drop PDF here or <span class="browse-link">browse</span></div>
+					<div class="pdf-drop-subtitle">Opens directly in Arth.Find Reader</div>
+				</div>
+			</div>
+			<div class="pdf-drop-status" id="pdf-drop-status" style="display: none;"></div>
+		</div>
+	</div>
+
+	<div class="section-divider"></div>
 
 	<!-- LLM Provider Setup -->
 	<div class="card">
