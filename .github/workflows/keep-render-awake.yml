@@ -1,0 +1,19 @@
+```yaml
+name: Keep Render Backend Awake
+
+on:
+  schedule:
+    # Runs every 10 minutes, offset from the top of the hour
+    - cron: "3-59/10 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Ping Render backend
+        run: |
+          curl --fail --silent --show-error --max-time 30 \
+            https://arthfind-backend.onrender.com/
+```
