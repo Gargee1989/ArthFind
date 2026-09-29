@@ -13,4 +13,4 @@ jobs:
       - name: Ping Render backend
         run: |
           curl --fail --silent --show-error --max-time 30 \
-            https://arthfind-backend.onrender.com/
+            https://arthfind-backend.onrender.com/health
