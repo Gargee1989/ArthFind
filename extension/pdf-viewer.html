@@ -841,6 +841,7 @@
 		/* PDF PAGE — canvas stays white; dark themes get stronger shadow only */
 		.pdf-page {
 			position: relative;
+			isolation: isolate;
 			margin: 0 auto 24px;
 			background: #ffffff;
 			box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.08);
@@ -867,9 +868,20 @@
 			inset: 0;
 			overflow: hidden;
 			line-height: 1;
+			text-align: initial;
+			letter-spacing: normal;
+			word-spacing: normal;
+			text-size-adjust: none;
+			transform-origin: 0 0;
+			/* Blend the highlight into the PDF instead of painting over its ink. */
+			mix-blend-mode: multiply;
+			--min-font-size: 1;
+			--scale-round-x: 1px;
+			--scale-round-y: 1px;
 		}
 
-		.text-layer span {
+		.text-layer span,
+		.text-layer br {
 			position: absolute;
 			color: transparent;
 			white-space: pre;
@@ -879,38 +891,55 @@
 			-webkit-user-select: text;
 		}
 
-		.text-layer ::selection {
-			background: rgba(37, 99, 235, 0.3);
+		/* Geometry variables supplied by the bundled PDF.js TextLayer. */
+		.text-layer [data-text-index] {
+			font-size: calc(var(--total-scale-factor) * var(--min-font-size) * var(--font-height));
+			transform: rotate(var(--rotate, 0deg)) scaleX(var(--scale-x, 1)) scale(calc(1 / var(--min-font-size)));
 		}
+		.text-layer .markedContent { display: contents; }
+		.text-layer[data-main-rotation="90"] { transform: rotate(90deg) translateY(-100%); }
+		.text-layer[data-main-rotation="180"] { transform: rotate(180deg) translate(-100%, -100%); }
+		.text-layer[data-main-rotation="270"] { transform: rotate(270deg) translateX(-100%); }
+
+		.text-layer ::selection {
+			background: rgba(96, 165, 250, 0.42);
+			color: transparent;
+			text-shadow: none;
+		}
+		.text-layer br::selection { background: transparent; }
 
 		/* Highlighter Mark Styling */
 		mark.cc-pdf-highlight {
-			background-color: var(--highlight-yellow) !important;
+			background-color: rgba(255, 218, 64, 0.58) !important;
 			color: transparent !important;
+			font: inherit;
+			text-shadow: none;
 			border-radius: 2px;
-			cursor: pointer;
+			cursor: text;
 			box-decoration-break: clone;
 			-webkit-box-decoration-break: clone;
-			padding: 1px 0;
+			padding: 0;
+			box-shadow: inset 0 -1px rgba(161, 98, 7, 0.45);
 		}
 
 		/* Pointer-only marks have no background */
 		mark.cc-pdf-highlight.cc-pointer-only {
 			background-color: transparent !important;
+			box-shadow: none;
 		}
 
 		/* Search Match Highlights */
 		mark.cc-find-highlight {
-			background-color: var(--find-highlight) !important;
-			color: #111827 !important;
+			background-color: rgba(250, 204, 21, 0.45) !important;
+			color: transparent !important;
+			font: inherit;
 			border-radius: 2px;
-			padding: 0 1px;
-			font-weight: 600;
+			padding: 0;
 		}
 
 		mark.cc-find-highlight.cc-find-active {
-			background-color: var(--find-active) !important;
-			color: #ffffff !important;
+			background-color: rgba(251, 146, 60, 0.5) !important;
+			color: transparent !important;
 			outline: 2px solid #ea580c;
 		}
 

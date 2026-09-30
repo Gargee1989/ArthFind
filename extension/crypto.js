@@ -6,7 +6,7 @@
 	// Change this URL to your deployed backend URL in production.
 	// Example: "https://api.yourdomain.com/define"
 	// =========================================================================
-	const BACKEND_ENDPOINT = "http://127.0.0.1:8000/define";
+	const BACKEND_ENDPOINT = "https://arthfind-backend.onrender.com/define";
 
 	function getCredentialsEndpoint(endpoint = BACKEND_ENDPOINT) {
 		const url = new URL(endpoint);
@@ -31,7 +31,7 @@
 		return Uint8Array.from(binary, (character) => character.charCodeAt(0));
 	}
 
-	async function getKey() {
+	async function getKey(create = false) {
 		const stored = await chrome.storage.local.get(KEY_STORAGE);
 		if (stored[KEY_STORAGE]) {
 			return crypto.subtle.importKey(
@@ -41,6 +41,9 @@
 			false,
 			["encrypt", "decrypt"]
 		);
+		}
+		if (!create) {
+			throw new Error("The saved connection cannot be unlocked in this browser profile.");
 		}
 
 		const key = await crypto.subtle.generateKey(
@@ -63,7 +66,7 @@
 
 	async function encrypt(value) {
 		if (!value) return "";
-		const key = await getKey();
+		const key = await getKey(true);
 		const iv = crypto.getRandomValues(new Uint8Array(IV_LENGTH));
 		const encoded = new TextEncoder().encode(value);
 		const ciphertext = await crypto.subtle.encrypt(

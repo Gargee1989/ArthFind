@@ -26,3 +26,8 @@ The extension sends `POST /define` with `word` and `context`. Provider API calls
 The backend supports Google Gemini, OpenAI, and NVIDIA NIM. Configure the fallback provider key and model in `backend/.env` or the deployment environment.
 
 For BYOK mode, the extension sends the user's provider key once to `POST /credentials`. The backend encrypts the key with `CREDENTIAL_ENCRYPTION_KEY` and returns an opaque credential reference. Subsequent `/define` requests send only that reference; provider keys never return to the extension after registration.
+
+For persistent credentials on Render, configure PostgreSQL with `DATABASE_URL`
+and keep `CREDENTIAL_ENCRYPTION_KEY` unchanged across deployments. See
+[database setup and migration](backend/DATABASE.md). The root `render.yaml`
+prepares the backend and its database as a Render Blueprint.
