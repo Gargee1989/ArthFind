@@ -172,4 +172,10 @@ We chose it because meaning is what every reader is really searching for. It was
 
 We just built something that helps you find it.
 
+For BYOK mode, the extension sends the user's provider key once to `POST /credentials`. The backend encrypts the key with `CREDENTIAL_ENCRYPTION_KEY` and returns an opaque credential reference. Subsequent `/define` requests send only that reference; provider keys never return to the extension after registration.
+
+For persistent credentials on Render, configure PostgreSQL with `DATABASE_URL`
+and keep `CREDENTIAL_ENCRYPTION_KEY` unchanged across deployments. See
+[database setup and migration](backend/DATABASE.md). The root `render.yaml`
+prepares the backend and its database as a Render Blueprint.
 **Arth.Find: because the right meaning depends on where you find the word.**

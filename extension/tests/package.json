@@ -1,0 +1,10 @@
+{
+  "name": "contextcore-reader-tests",
+  "private": true,
+  "scripts": {
+    "test": "node --test word-card-theme.cjs pdf-highlights.cjs credential-persistence.cjs"
+  },
+  "devDependencies": {
+    "playwright": "1.63.0"
+  }
+}

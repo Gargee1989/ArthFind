@@ -112,9 +112,7 @@ if (settingsForm) {
 		llmApiKey.disabled = locked;
 		llmModel.disabled = locked;
 		clearCredential.disabled = !locked;
-		llmApiKey.placeholder = locked
-			? "Remove the saved provider key before adding another"
-			: "Enter or replace your provider key";
+		llmApiKey.placeholder = "Enter your API key";
 	}
 
 	ContentCoreCrypto.readSettings().then((settings) => {
@@ -131,8 +129,8 @@ if (settingsForm) {
 			const settings = await ContentCoreCrypto.readSettings();
 			if (settings.contentCoreCredentialId && settings.contentCoreCredentialToken) {
 				try {
-					await fetch(
-						`${ContentCoreCrypto.getCredentialsEndpoint()}/${encodeURIComponent(settings.contentCoreCredentialId)}`,
+					const response = await fetch(
+						`${ContentCoreCrypto.getCredentialsEndpoint(settings.contentCoreEndpoint)}/${encodeURIComponent(settings.contentCoreCredentialId)}`,
 						{
 							method: "DELETE",
 							headers: {
@@ -140,8 +138,13 @@ if (settingsForm) {
 							}
 						}
 					);
+					if (!response.ok) {
+						const error = await response.json().catch(() => ({}));
+						const alreadyRemoved = response.status === 400 && error.message === "Saved credential was not found.";
+						if (!alreadyRemoved) throw new Error("Unable to remove the saved key. Please try again.");
+					}
 				} catch (networkError) {
-					console.warn("Backend credential removal request failed:", networkError);
+					throw new Error("Could not remove the key from the server. Your saved connection has been kept; try again when connected.");
 				}
 			}
 			await chrome.storage.local.remove([
@@ -211,10 +214,12 @@ if (settingsForm) {
 		updateStatusBadge("verifying");
 		setSubmitLoading(true);
 		try {
+			const currentSettings = await ContentCoreCrypto.readSettings();
+			const endpoint = currentSettings.contentCoreEndpoint || ContentCoreCrypto.BACKEND_ENDPOINT;
 			let credentialId;
 			let credentialToken;
 			if (enteredKey) {
-				const response = await fetch(ContentCoreCrypto.getCredentialsEndpoint(), {
+				const response = await fetch(ContentCoreCrypto.getCredentialsEndpoint(endpoint), {
 					method: "POST",
 					headers: {
 						"Content-Type": "application/json"
@@ -238,7 +243,7 @@ if (settingsForm) {
 				const registered = await response.json();
 				credentialId = registered.credential_id;
 				credentialToken = registered.credential_token;
-				setCredentialFieldsLocked(true);
+				if (!credentialId || !credentialToken) throw new Error("The server did not return a saved connection.");
 			} else {
 				const current = await ContentCoreCrypto.readSettings();
 				credentialId = current.contentCoreCredentialId || "";
@@ -247,11 +252,14 @@ if (settingsForm) {
 
 			const encryptedCredentialToken = await ContentCoreCrypto.encrypt(credentialToken);
 			await chrome.storage.local.set({
+				contentCoreEndpoint: endpoint,
 				contentCoreCredentialId: credentialId,
 				contentCoreCredentialTokenEncrypted: encryptedCredentialToken,
 				contentCoreProvider: selectedProvider,
 				contentCoreLlmModel: enteredModel
 			});
+			setCredentialFieldsLocked(true);
+			llmApiKey.value = "";
 			await chrome.storage.local.remove([
 				"contentCoreApiKey",
 				"contentCoreApiKeyEncrypted",
@@ -262,7 +270,7 @@ if (settingsForm) {
 			]);
 			setSubmitLoading(false);
 			updateStatusBadge("connected");
-			status.textContent = "✓ Key verified and saved successfully.";
+			status.textContent = "Key verified and saved. It will be reused automatically across sessions.";
 			status.className = "success";
 		} catch (error) {
 			setSubmitLoading(false);

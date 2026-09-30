@@ -14,6 +14,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from backend.config import settings, SUPPORTED_PROVIDERS
@@ -56,11 +57,15 @@ def require_backend_auth(request: Request) -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application startup and shutdown lifecycle handler."""
+    await run_in_threadpool(credential_service.initialize)
     logger.info(
         f"Starting ContentCore backend (Provider: {settings.provider_name}, Model: {settings.model}, Configured: {settings.is_configured})"
     )
-    yield
-    logger.info("ContentCore backend shut down.")
+    try:
+        yield
+    finally:
+        credential_service.engine.dispose()
+        logger.info("ContentCore backend shut down.")
 
 
 app = FastAPI(
@@ -191,7 +196,8 @@ async def define_text(request: Request) -> JSONResponse:
     # available for non-extension clients, but the extension only sends references.
     credential_config = None
     if req.credential_id or req.credential_token:
-        credential_config = credential_service.resolve(
+        credential_config = await run_in_threadpool(
+            credential_service.resolve,
             credential_id=req.credential_id or "",
             credential_token=req.credential_token or "",
         )
@@ -202,7 +208,8 @@ async def define_text(request: Request) -> JSONResponse:
     direct_base_url = credential_config["base_url"] if credential_config else req.base_url
 
     # Call LLM contextual engine
-    result: DefineResponse = llm_service.define(
+    result: DefineResponse = await run_in_threadpool(
+        llm_service.define,
         target=req.target,
         context=req.context,
         api_key=direct_api_key,
@@ -235,7 +242,8 @@ async def register_credential(request: Request) -> CredentialRegisterResponse:
             "Provider, API key, and optional model are required."
         ) from error
 
-    registered = credential_service.register(
+    registered = await run_in_threadpool(
+        credential_service.register,
         provider=req.provider,
         api_key=req.api_key,
         model=req.model,
@@ -255,7 +263,7 @@ async def delete_credential(credential_id: str, request: Request) -> dict[str, s
     auth_header = request.headers.get("authorization") or ""
     if not token and auth_header.lower().startswith("bearer "):
         token = auth_header[7:].strip()
-    credential_service.delete(credential_id, token)
+    await run_in_threadpool(credential_service.delete, credential_id, token)
     return {"status": "deleted"}
 
 
@@ -268,7 +276,8 @@ async def health_check() -> dict[str, Any]:
         "model": settings.model,
         "configured": settings.is_configured,
         "supported_providers": SUPPORTED_PROVIDERS,
-        "credential_storage_configured": bool(settings.credential_encryption_key),
+        "credential_storage_configured": credential_service.encryption_configured,
+        "credential_storage_backend": credential_service.storage_backend,
         "accepts_credential_references": True,
     }
 

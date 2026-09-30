@@ -56,6 +56,8 @@
 	let floatingPillContainer = null;
 	let pillRemovalTimer = null;
 	let savedRange = null;
+	// Text offsets stay stable when PDF.js rebuilds the text layer at another zoom.
+	let pdfHighlights = [];
 
 	// In-PDF Search State
 	let findMatches = [];
@@ -65,14 +67,16 @@
 
 	// Theme module — applies contentCoreTheme to html[data-theme]
 	let _lastAppliedTheme = null;
+	let themeCommitVersion = 0;
 	function applyTheme(themeId) {
 		const id = themeId || "warm-calm";
-		if (_lastAppliedTheme === id) return;
 		_lastAppliedTheme = id;
 		document.documentElement.dataset.theme = id;
 	}
 
+	const themeReadVersion = themeCommitVersion;
 	chrome.storage.local.get({ contentCoreTheme: "warm-calm" }, ({ contentCoreTheme }) => {
+		if (themeReadVersion !== themeCommitVersion) return;
 		applyTheme(contentCoreTheme);
 	});
 
@@ -103,22 +107,16 @@
 		if (isOpen) refreshTbSwatches();
 	});
 
+	// Theme changes are committed by selection, never by pointer enter/leave.
 	tbThemeSwatches.forEach((swatch) => {
-		// Hover — temporary preview, does NOT update _lastAppliedTheme
-		swatch.addEventListener("mouseenter", () => {
-			document.documentElement.dataset.theme = swatch.dataset.themeId;
-		});
-		swatch.addEventListener("mouseleave", () => {
-			document.documentElement.dataset.theme = _lastAppliedTheme || "warm-calm";
-		});
 
 		// Click — commit permanently
 		swatch.addEventListener("click", (e) => {
 			e.stopPropagation();
 			const chosen = swatch.dataset.themeId;
+			themeCommitVersion += 1;
+			applyTheme(chosen);
 			chrome.storage.local.set({ contentCoreTheme: chosen });
-			_lastAppliedTheme = chosen;
-			document.documentElement.dataset.theme = chosen;
 			refreshTbSwatches();
 			tbThemePanel.classList.remove("open");
 			tbThemeBtn.classList.remove("active");
@@ -395,123 +393,124 @@
 		savedRange = null;
 	}
 
-	// Check if a range or node is currently within a highlight mark
-	function isRangeHighlighted(range) {
-		if (!range) return false;
-		const startParent = range.startContainer.nodeType === Node.ELEMENT_NODE
-			? range.startContainer
-			: range.startContainer.parentElement;
-		const endParent = range.endContainer.nodeType === Node.ELEMENT_NODE
-			? range.endContainer
-			: range.endContainer.parentElement;
-		if (startParent?.closest(".cc-pdf-highlight") || endParent?.closest(".cc-pdf-highlight")) {
-			return true;
+	// Clip the selection to PDF text runs; never mutate the live selection while
+	// discovering its boundaries. Element endpoints and backwards selections work too.
+	function selectedPdfSegments(range) {
+		if (!range || range.collapsed) return [];
+		const segments = [];
+		for (const span of renderTarget.querySelectorAll(".text-layer [data-text-index]")) {
+			if (!range.intersectsNode(span)) continue;
+			const clipped = document.createRange();
+			clipped.selectNodeContents(span);
+			if (range.compareBoundaryPoints(Range.START_TO_START, clipped) > 0) {
+				clipped.setStart(range.startContainer, range.startOffset);
+			}
+			if (range.compareBoundaryPoints(Range.END_TO_END, clipped) < 0) {
+				clipped.setEnd(range.endContainer, range.endOffset);
+			}
+			if (clipped.collapsed || !clipped.toString().trim()) continue;
+			const prefix = document.createRange();
+			prefix.selectNodeContents(span);
+			prefix.setEnd(clipped.startContainer, clipped.startOffset);
+			const start = prefix.toString().length;
+			segments.push({ span, page: span.closest(".pdf-page").dataset.pageNumber,
+				item: span.dataset.textIndex, start, end: start + clipped.toString().length });
 		}
-		if (range.commonAncestorContainer.nodeType === Node.ELEMENT_NODE) {
-			if (range.commonAncestorContainer.closest(".cc-pdf-highlight")) return true;
-			if (range.commonAncestorContainer.querySelector(".cc-pdf-highlight")) return true;
+		return segments;
+	}
+
+	function sameTextRun(a, b) {
+		return a.page === b.page && a.item === b.item;
+	}
+
+	function segmentIsHighlighted(segment) {
+		let end = segment.start;
+		for (const mark of pdfHighlights.filter(h => sameTextRun(h, segment)).sort((a, b) => a.start - b.start)) {
+			if (mark.start > end) break;
+			if (mark.end > end) end = mark.end;
+			if (end >= segment.end) return true;
 		}
 		return false;
 	}
 
-	// Unwrap highlight mark cleanly
+	function isRangeHighlighted(range) {
+		const segments = selectedPdfSegments(range);
+		return segments.length > 0 && segments.every(segmentIsHighlighted);
+	}
+
 	function unwrapHighlight(mark) {
 		const parent = mark.parentNode;
 		if (!parent) return;
-		while (mark.firstChild) {
-			parent.insertBefore(mark.firstChild, mark);
-		}
-		parent.removeChild(mark);
+		mark.replaceWith(...mark.childNodes);
 		parent.normalize();
 	}
 
-	// Toggle Highlight on selection
-	function toggleHighlight() {
-		const range = savedRange || (window.getSelection()?.rangeCount ? window.getSelection().getRangeAt(0) : null);
-		if (!range) return;
-
-		const startParent = range.startContainer.nodeType === Node.ELEMENT_NODE
-			? range.startContainer
-			: range.startContainer.parentElement;
-		const endParent = range.endContainer.nodeType === Node.ELEMENT_NODE
-			? range.endContainer
-			: range.endContainer.parentElement;
-
-		const existingMarks = new Set();
-		const m1 = startParent?.closest(".cc-pdf-highlight");
-		const m2 = endParent?.closest(".cc-pdf-highlight");
-		if (m1) existingMarks.add(m1);
-		if (m2) existingMarks.add(m2);
-
-		if (range.commonAncestorContainer.nodeType === Node.ELEMENT_NODE) {
-			const m3 = range.commonAncestorContainer.closest(".cc-pdf-highlight");
-			if (m3) existingMarks.add(m3);
-			range.commonAncestorContainer.querySelectorAll(".cc-pdf-highlight").forEach((el) => {
-				if (range.intersectsNode(el)) existingMarks.add(el);
-			});
+	// Snapshot text-node ranges before wrapping, then edit from end to start.
+	// Search marks can remain nested inside the original PDF.js text run.
+	function textRanges(span, start, end) {
+		const walker = document.createTreeWalker(span, NodeFilter.SHOW_TEXT);
+		const ranges = [];
+		let offset = 0;
+		while (walker.nextNode()) {
+			const node = walker.currentNode;
+			const from = Math.max(0, start - offset);
+			const to = Math.min(node.length, end - offset);
+			if (to > from) {
+				const range = document.createRange();
+				range.setStart(node, from);
+				range.setEnd(node, to);
+				ranges.push(range);
+			}
+			offset += node.length;
+			if (offset >= end) break;
 		}
+		return ranges;
+	}
 
-		if (existingMarks.size > 0) {
-			// Cleanly unwrap existing highlights (never stack or darken multiple yellow layers)
-			existingMarks.forEach((mark) => unwrapHighlight(mark));
-			const highlightBtn = floatingPillContainer?.querySelector('[data-action="highlight"]');
-			highlightBtn?.classList.remove("active");
-			showToast("Highlight removed");
-		} else {
-			// Apply new soft yellow highlight (#ffeb3b80)
-			try {
-				if (range.startContainer === range.endContainer && range.startContainer.nodeType === Node.TEXT_NODE) {
+	function restorePdfHighlights(root = renderTarget) {
+		root.querySelectorAll(".cc-pdf-highlight").forEach(unwrapHighlight);
+		for (const span of root.querySelectorAll(".text-layer [data-text-index]")) {
+			const run = { page: span.closest(".pdf-page").dataset.pageNumber, item: span.dataset.textIndex };
+			for (const highlight of pdfHighlights.filter(h => sameTextRun(h, run))) {
+				for (const range of textRanges(span, highlight.start, highlight.end).reverse()) {
 					const mark = document.createElement("mark");
-					mark.className = "cc-pdf-highlight";
+					mark.className = "cc-pdf-highlight" + (highlight.mode === "pointer" ? " cc-pointer-only" : "");
 					range.surroundContents(mark);
-				} else {
-					const walker = document.createTreeWalker(
-						range.commonAncestorContainer,
-						NodeFilter.SHOW_TEXT,
-						{
-							acceptNode: (node) => {
-								if (!range.intersectsNode(node)) return NodeFilter.FILTER_REJECT;
-								if (!node.textContent.trim()) return NodeFilter.FILTER_SKIP;
-								return NodeFilter.FILTER_ACCEPT;
-							}
-						}
-					);
-					const nodes = [];
-					while (walker.nextNode()) nodes.push(walker.currentNode);
-					for (const node of nodes) {
-						if (node.parentElement?.closest(".cc-pdf-highlight")) continue;
-						const nodeRange = document.createRange();
-						if (node === range.startContainer) {
-							nodeRange.setStart(node, range.startOffset);
-							nodeRange.setEnd(node, node.length);
-						} else if (node === range.endContainer) {
-							nodeRange.setStart(node, 0);
-							nodeRange.setEnd(node, range.endOffset);
-						} else {
-							nodeRange.selectNodeContents(node);
-						}
-						if (!nodeRange.collapsed) {
-							const mark = document.createElement("mark");
-							mark.className = "cc-pdf-highlight";
-							nodeRange.surroundContents(mark);
-						}
-					}
 				}
-				const highlightBtn = floatingPillContainer?.querySelector('[data-action="highlight"]');
-				highlightBtn?.classList.add("active");
-				// Pointer highlight animation on first applied mark
-				const firstMark = range.commonAncestorContainer.nodeType === Node.ELEMENT_NODE
-					? range.commonAncestorContainer.querySelector(".cc-pdf-highlight")
-					: range.startContainer.parentElement?.closest(".cc-pdf-highlight");
-				if (firstMark) showPointerHighlight(firstMark);
-				showToast("Highlighted");
-			} catch (e) {
-				console.error("[arth.find] Highlight error:", e);
 			}
 		}
+	}
 
-		// Clear selection after action
-		window.getSelection()?.removeAllRanges();
+	function refreshPointerHighlights() {
+		showPointerHighlight([...renderTarget.querySelectorAll(".cc-pointer-only")]);
+	}
+
+	function toggleHighlight(mode = "traditional") {
+		const selection = window.getSelection();
+		const range = savedRange || (selection?.rangeCount ? selection.getRangeAt(0) : null);
+		const segments = selectedPdfSegments(range);
+		if (!segments.length) return;
+		const remove = segments.every(segmentIsHighlighted);
+		for (const segment of segments) {
+			// Preserve unselected portions of an existing highlight.
+			pdfHighlights = pdfHighlights.flatMap(h => {
+				if (!sameTextRun(h, segment) || h.end <= segment.start || h.start >= segment.end) return [h];
+				const remaining = [];
+				if (h.start < segment.start) remaining.push({ ...h, end: segment.start });
+				if (h.end > segment.end) remaining.push({ ...h, start: segment.end });
+				return remaining;
+			});
+			if (!remove) {
+				const { span, ...offsets } = segment;
+				pdfHighlights.push({ ...offsets, mode });
+			}
+		}
+		selection?.removeAllRanges();
+		savedRange = null;
+		restorePdfHighlights();
+		refreshPointerHighlights();
+		floatingPillContainer?.querySelector('[data-action="highlight"]')?.classList.toggle("active", !remove);
+		showToast(remove ? "Highlight removed" : "Highlighted");
 		clearTimeout(pillRemovalTimer);
 		pillRemovalTimer = setTimeout(removeFloatingPill, 400);
 	}
@@ -710,84 +709,8 @@
 		return div.innerHTML;
 	}
 
-	// Pointer-only highlight — animated border+cursor, no persistent mark
 	function doPointerHighlight() {
-		const range = savedRange || (window.getSelection()?.rangeCount ? window.getSelection().getRangeAt(0) : null);
-		if (!range) return;
-
-		// Collect existing marks to support toggle-off
-		const startParent = range.startContainer.nodeType === Node.ELEMENT_NODE
-			? range.startContainer : range.startContainer.parentElement;
-		const endParent = range.endContainer.nodeType === Node.ELEMENT_NODE
-			? range.endContainer : range.endContainer.parentElement;
-		const existingMarks = new Set();
-		const m1 = startParent?.closest(".cc-pdf-highlight");
-		const m2 = endParent?.closest(".cc-pdf-highlight");
-		if (m1) existingMarks.add(m1);
-		if (m2) existingMarks.add(m2);
-		if (range.commonAncestorContainer.nodeType === Node.ELEMENT_NODE) {
-			const m3 = range.commonAncestorContainer.closest(".cc-pdf-highlight");
-			if (m3) existingMarks.add(m3);
-			range.commonAncestorContainer.querySelectorAll(".cc-pdf-highlight").forEach((el) => {
-				if (range.intersectsNode(el)) existingMarks.add(el);
-			});
-		}
-
-		if (existingMarks.size > 0) {
-			existingMarks.forEach((mark) => unwrapHighlight(mark));
-			document.querySelectorAll(".cc-pointer-highlight-overlay").forEach((el) => el.remove());
-			const highlightBtn = floatingPillContainer?.querySelector('[data-action="highlight"]');
-			highlightBtn?.classList.remove("active");
-			window.getSelection()?.removeAllRanges();
-			clearTimeout(pillRemovalTimer);
-			pillRemovalTimer = setTimeout(removeFloatingPill, 400);
-			return;
-		}
-
-		const createdMarks = [];
-		try {
-			if (range.startContainer === range.endContainer && range.startContainer.nodeType === Node.TEXT_NODE) {
-				const mark = document.createElement("mark");
-				mark.className = "cc-pdf-highlight cc-pointer-only";
-				range.surroundContents(mark);
-				createdMarks.push(mark);
-			} else {
-				const walker = document.createTreeWalker(range.commonAncestorContainer, NodeFilter.SHOW_TEXT, {
-					acceptNode: (node) => range.intersectsNode(node) && node.textContent.trim()
-						? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT
-				});
-				const nodes = [];
-				while (walker.nextNode()) nodes.push(walker.currentNode);
-				for (const node of nodes) {
-					if (node.parentElement?.closest(".cc-pdf-highlight")) continue;
-					const nr = document.createRange();
-					if (node === range.startContainer) { nr.setStart(node, range.startOffset); nr.setEnd(node, node.length); }
-					else if (node === range.endContainer) { nr.setStart(node, 0); nr.setEnd(node, range.endOffset); }
-					else nr.selectNodeContents(node);
-					if (!nr.collapsed) {
-						const mark = document.createElement("mark");
-						mark.className = "cc-pdf-highlight cc-pointer-only";
-						nr.surroundContents(mark);
-						createdMarks.push(mark);
-					}
-				}
-			}
-		} catch (e) {
-			console.error("[arth.find] Pointer highlight error:", e);
-		}
-
-		if (createdMarks.length > 0) {
-			// Defer so marks are laid out before measuring
-			requestAnimationFrame(() => {
-				showPointerHighlight(createdMarks);
-				const highlightBtn = floatingPillContainer?.querySelector('[data-action="highlight"]');
-				highlightBtn?.classList.add("active");
-			});
-		}
-
-		window.getSelection()?.removeAllRanges();
-		clearTimeout(pillRemovalTimer);
-		pillRemovalTimer = setTimeout(removeFloatingPill, 400);
+		toggleHighlight("pointer");
 	}
 
 	// Pointer highlight animation — one overlay per mark, all persist until next call
@@ -811,14 +734,11 @@
 		const currentThemeId = document.documentElement.dataset.theme || "warm-calm";
 		const accent = cssAccent || accentMap[currentThemeId] || "#4a90a4";
 
-		// #pdf-render is the scroll container — use its scroll offsets
-		const scrollEl = document.querySelector("#pdf-render");
-		const scrollTop = scrollEl ? scrollEl.scrollTop : window.scrollY;
-		const scrollLeft = scrollEl ? scrollEl.scrollLeft : window.scrollX;
-		const containerRect = scrollEl ? scrollEl.getBoundingClientRect() : { top: 0, left: 0 };
-
 		for (const markEl of Array.isArray(marks) ? marks : [marks]) {
 			const rect = markEl.getBoundingClientRect();
+			const page = markEl.closest(".pdf-page");
+			if (!page) continue;
+			const containerRect = page.getBoundingClientRect();
 			if (!rect.width || !rect.height) continue;
 
 			const overlay = document.createElement("div");
@@ -827,8 +747,8 @@
 				position: absolute;
 				pointer-events: none;
 				z-index: 999;
-				left: ${rect.left - containerRect.left + scrollLeft}px;
-				top: ${rect.top - containerRect.top + scrollTop}px;
+				left: ${rect.left - containerRect.left}px;
+				top: ${rect.top - containerRect.top}px;
 				width: ${rect.width}px;
 				height: ${rect.height}px;
 			`;
@@ -845,11 +765,7 @@
 			overlay.appendChild(border);
 			overlay.appendChild(pointer);
 
-			if (scrollEl) {
-				scrollEl.appendChild(overlay);
-			} else {
-				document.documentElement.appendChild(overlay);
-			}
+			page.appendChild(overlay);
 		}
 	}
 
@@ -858,9 +774,10 @@
 		const selection = window.getSelection();
 		selectedText = clean(selection?.toString() || "");
 
-		if (!selectedText || selectedText.length > 160 || !selection.rangeCount) return;
+		if (!selectedText || !selection.rangeCount) return;
 
 		const range = selection.getRangeAt(0);
+		if (!selectedPdfSegments(range).length) return;
 		const rect = range.getBoundingClientRect();
 		if (rect.width === 0 && rect.height === 0) return;
 
@@ -1098,6 +1015,8 @@
 		const highlightChevron = floatingPillContainer.querySelector('[data-action="highlight-mode"]');
 		const highlightModePanel = floatingPillContainer.querySelector("#cc-highlight-mode-panel");
 		const highlightModeBtns = floatingPillContainer.querySelectorAll(".cc-highlight-mode-btn");
+		explainBtn.disabled = saveBtn.disabled = selectedText.length > 160;
+		if (explainBtn.disabled) explainBtn.title = "Select up to 160 characters to explain; longer selections can be highlighted.";
 
 		// Load persisted mode
 		let highlightMode = "traditional";
@@ -1117,6 +1036,7 @@
 		highlightChevron.addEventListener("click", (e) => {
 			e.stopPropagation();
 			highlightModePanel.classList.toggle("open");
+			themePanel.classList.remove("open");
 		});
 
 		highlightModeBtns.forEach((btn) => {
@@ -1134,10 +1054,8 @@
 			});
 		});
 
-		document.addEventListener("mousedown", () => {
-			highlightModePanel?.classList.remove("open");
-			themePanel?.classList.remove("open");
-		}, { capture: true, once: false });
+		// Outside clicks are handled by the shared pill-dismissal listener.
+		// Closing here during document capture would hide swatches before click.
 
 		explainBtn.addEventListener("click", () => {
 			// If dropdown card already open, toggle it off
@@ -1246,16 +1164,12 @@
 		const themeBtn = floatingPillContainer.querySelector('[data-action="theme"]');
 		const themePanel = floatingPillContainer.querySelector("#cc-theme-panel");
 		const themeSwatches = floatingPillContainer.querySelectorAll(".cc-theme-swatch");
-
-		let pdfCurrentTheme = "warm-calm";
-		chrome.storage.local.get({ contentCoreTheme: "warm-calm" }, ({ contentCoreTheme }) => {
-			pdfCurrentTheme = contentCoreTheme;
-			refreshThemeSwatches();
-		});
+		themeBtn.addEventListener("mousedown", (e) => e.stopPropagation());
 
 		function refreshThemeSwatches() {
+			const currentTheme = _lastAppliedTheme || "warm-calm";
 			themeSwatches.forEach((s) => {
-				s.dataset.active = String(s.dataset.themeId === pdfCurrentTheme);
+				s.dataset.active = String(s.dataset.themeId === currentTheme);
 			});
 		}
 
@@ -1266,22 +1180,20 @@
 			highlightModePanel?.classList.remove("open");
 		});
 
+		// Keep the word card on the selected theme when the menu closes.
 		themeSwatches.forEach((swatch) => {
-			// Hover — temporary preview
-			swatch.addEventListener("mouseenter", () => {
-				document.documentElement.dataset.theme = swatch.dataset.themeId;
-			});
-			swatch.addEventListener("mouseleave", () => {
-				document.documentElement.dataset.theme = _lastAppliedTheme || "warm-calm";
+			swatch.addEventListener("mousedown", (e) => {
+				e.preventDefault();
+				e.stopPropagation();
 			});
 
 			// Click — commit permanently
 			swatch.addEventListener("click", (e) => {
 				e.stopPropagation();
-				pdfCurrentTheme = swatch.dataset.themeId;
-				_lastAppliedTheme = pdfCurrentTheme;
-				document.documentElement.dataset.theme = pdfCurrentTheme;
-				chrome.storage.local.set({ contentCoreTheme: pdfCurrentTheme });
+				themeCommitVersion += 1;
+				const chosen = swatch.dataset.themeId;
+				applyTheme(chosen);
+				chrome.storage.local.set({ contentCoreTheme: chosen });
 				refreshThemeSwatches();
 				refreshTbSwatches();
 				themePanel.classList.remove("open");
@@ -1393,18 +1305,14 @@
 	// In-PDF Search / Find Bar Implementation
 	function clearSearchHighlights() {
 		const marks = document.querySelectorAll(".cc-find-highlight");
-		marks.forEach((mark) => {
-			const parent = mark.parentNode;
-			if (parent) {
-				parent.replaceChild(document.createTextNode(mark.textContent), mark);
-				parent.normalize();
-			}
-		});
+		marks.forEach(unwrapHighlight);
 		findMatches = [];
 		activeFindIndex = -1;
 		findCount.style.display = "none";
 		findPrev.disabled = true;
 		findNext.disabled = true;
+		restorePdfHighlights();
+		refreshPointerHighlights();
 	}
 
 	function performSearch() {
@@ -1413,7 +1321,7 @@
 		if (!query || !pdfDoc) return;
 
 		const lowerQuery = query.toLowerCase();
-		const spans = document.querySelectorAll(".text-layer span");
+		const spans = renderTarget.querySelectorAll(".text-layer [data-text-index]");
 
 		spans.forEach((span) => {
 			const text = span.textContent;
@@ -1442,6 +1350,9 @@
 				span.appendChild(fragment);
 			}
 		});
+
+		restorePdfHighlights();
+		refreshPointerHighlights();
 
 		if (findMatches.length > 0) {
 			activeFindIndex = 0;
@@ -1540,6 +1451,7 @@
 		updateZoomUI();
 
 		removeFloatingPill();
+		clearSearchHighlights();
 		renderTarget.replaceChildren();
 		pageText = "";
 
@@ -1579,27 +1491,27 @@
 
 				const textContent = await page.getTextContent();
 				if (signal.aborted) return;
-				const pageLines = textContent.items.map((item) => item.str + (item.hasEOL ? "\n" : " ")).join("");
+				const pageLines = textContent.items.filter(item => typeof item.str === "string").map((item) => item.str + (item.hasEOL ? "\n" : " ")).join("");
 				const pageTextClean = pageLines.split("\n").map(clean).filter(Boolean).join("\n");
 				pageText += `${clean(pageTextClean)} `;
 				wrapper.dataset.text = pageTextClean;
 
-				for (const item of textContent.items) {
-					if (!item.str) continue;
-					const span = document.createElement("span");
-					const [scaleX, skewY, skewX, scaleY, x, y] = item.transform;
-					span.textContent = item.str;
-					const fontHeight = Math.abs(scaleY) * currentScale;
-					span.style.left = `${x * currentScale}px`;
-					span.style.top = `${viewport.height - y * currentScale - fontHeight}px`;
-					span.style.fontSize = `${fontHeight}px`;
-					span.style.fontFamily = item.fontName || "sans-serif";
-					const scaleFactor = Math.abs(scaleX / Math.abs(scaleY)) || 1;
-					if (scaleFactor !== 1) {
-						span.style.transform = `scaleX(${scaleFactor})`;
-					}
-					textLayer.appendChild(span);
+				textLayer.style.setProperty("--total-scale-factor", viewport.scale * (viewport.userUnit || 1));
+				const textTask = new globalThis.pdfjsLib.TextLayer({
+					textContentSource: textContent, container: textLayer, viewport
+				});
+				const cancelText = () => textTask.cancel();
+				signal.addEventListener("abort", cancelText, { once: true });
+				try {
+					await textTask.render();
+				} catch (error) {
+					if (signal.aborted) return;
+					throw error;
+				} finally {
+					signal.removeEventListener("abort", cancelText);
 				}
+				if (signal.aborted) return;
+				textTask.textDivs.forEach((span, index) => { span.dataset.textIndex = String(index); });
 
 				wrapper.appendChild(textLayer);
 				const renderTask = page.render({ canvasContext: ctx, viewport: hiDpiViewport });
@@ -1619,9 +1531,12 @@
 				}
 				if (signal.aborted) return;
 				renderTarget.appendChild(wrapper);
+				restorePdfHighlights(wrapper);
 			}
 
 			pageText = clean(pageText);
+			if (findInput.value.trim()) performSearch();
+			refreshPointerHighlights();
 		} finally {
 			if (renderAbortController?.signal === signal) {
 				isRendering = false;
@@ -1639,6 +1554,7 @@
 		docTitle.textContent = file.name;
 		docTitle.title = file.name;
 		currentDocument = file.name;
+		pdfHighlights = [];
 		if (emptyState) emptyState.style.display = "none";
 
 		const loadingOverlay = document.querySelector("#pdf-loading-overlay");

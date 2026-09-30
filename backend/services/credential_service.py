@@ -6,9 +6,13 @@ import base64
 import hashlib
 import os
 import secrets
-import sqlite3
 import uuid
 from pathlib import Path
+from threading import Lock
+
+from sqlalchemy import Column, DateTime, MetaData, String, Table, Text, create_engine, delete, insert, select, text
+from sqlalchemy.engine import make_url, URL
+from sqlalchemy.exc import SQLAlchemyError
 import httpx
 from openai import (
     OpenAI,
@@ -37,46 +41,82 @@ from backend.exceptions import DefinitionUnavailableException, InvalidInputExcep
 class CredentialService:
     """Manages encrypted storage and resolution of provider credentials."""
 
-    def __init__(self, db_path: Path | None = None) -> None:
+    def __init__(self, db_path: Path | None = None, database_url: str | None = None) -> None:
         default_path = Path(__file__).resolve().parent.parent / ".credentials.sqlite3"
-        self.db_path = db_path or default_path
-        self._ensure_schema()
+        self.db_path = Path(db_path) if db_path is not None else default_path
+        # An explicit file path is useful for isolated tests and legacy imports.
+        configured_url = database_url if database_url is not None else os.getenv("DATABASE_URL", "").strip()
+        if db_path is not None or not configured_url:
+            if os.getenv("RENDER") == "true" and db_path is None:
+                raise DefinitionUnavailableException("Set DATABASE_URL to a persistent PostgreSQL database on Render.")
+            url = URL.create("sqlite", database=str(self.db_path))
+        else:
+            url = make_url(configured_url)
+            if url.drivername in ("postgres", "postgresql"):
+                url = url.set(drivername="postgresql+psycopg")
+            if url.get_backend_name() not in ("sqlite", "postgresql"):
+                raise DefinitionUnavailableException("Credential storage requires PostgreSQL or SQLite.")
+            if os.getenv("RENDER") == "true" and url.get_backend_name() != "postgresql":
+                raise DefinitionUnavailableException("Use PostgreSQL for persistent credentials on Render.")
+        self.storage_backend = url.get_backend_name()
+        options = {"pool_pre_ping": True, "hide_parameters": True}
+        if self.storage_backend == "sqlite":
+            if url.database and url.database != ":memory:":
+                Path(url.database).parent.mkdir(parents=True, exist_ok=True)
+            options["connect_args"] = {"check_same_thread": False, "timeout": 15}
+        else:
+            options["connect_args"] = {"connect_timeout": 10}
+        self.engine = create_engine(url, **options)
+        self.metadata = MetaData()
+        # Keep the legacy SQLite schema so existing IDs and ciphertext remain valid.
+        self.credentials = Table(
+            "credentials", self.metadata,
+            Column("credential_id", String(36), primary_key=True),
+            Column("token_hash", String(64), nullable=False),
+            Column("provider", Text, nullable=False),
+            Column("model", Text),
+            Column("base_url", Text),
+            Column("encrypted_api_key", Text, nullable=False),
+            Column("created_at", DateTime, server_default=text("CURRENT_TIMESTAMP")),
+        )
+        self._schema_ready = False
+        self._schema_lock = Lock()
 
     def _ensure_schema(self) -> None:
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        with sqlite3.connect(self.db_path) as connection:
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS credentials (
-                    credential_id TEXT PRIMARY KEY,
-                    token_hash TEXT NOT NULL,
-                    provider TEXT NOT NULL,
-                    model TEXT,
-                    base_url TEXT,
-                    encrypted_api_key TEXT NOT NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-                """
-            )
-            connection.commit()
+        if self._schema_ready:
+            return
+        with self._schema_lock:
+            if self._schema_ready:
+                return
+            try:
+                self.metadata.create_all(self.engine)
+            except SQLAlchemyError as error:
+                raise DefinitionUnavailableException("Credential database is unavailable. Please try again later.") from error
+            self._schema_ready = True
+
+    def initialize(self) -> None:
+        """Fail startup on missing encryption configuration or unavailable storage."""
+        self._encryption_key()
+        self._ensure_schema()
+
+    @property
+    def encryption_configured(self) -> bool:
+        try:
+            self._encryption_key()
+            return True
+        except DefinitionUnavailableException:
+            return False
 
     @staticmethod
     def _encryption_key() -> bytes:
         raw_key = os.getenv("CREDENTIAL_ENCRYPTION_KEY", "").strip()
         if not raw_key:
-            # Auto-generate a secure 32-byte key if missing, so new developers and users have zero friction
-            generated = base64.urlsafe_b64encode(secrets.token_bytes(32)).decode()
-            env_path = Path(__file__).resolve().parent.parent / ".env"
-            try:
-                with open(env_path, "a") as f:
-                    f.write(f"\nCREDENTIAL_ENCRYPTION_KEY={generated}\n")
-            except Exception:
-                pass
-            os.environ["CREDENTIAL_ENCRYPTION_KEY"] = generated
-            raw_key = generated
+            raise DefinitionUnavailableException(
+                "Set a persistent CREDENTIAL_ENCRYPTION_KEY before storing user credentials."
+            )
 
         try:
-            key = base64.urlsafe_b64decode(raw_key.encode())
+            key = base64.b64decode(raw_key.encode(), altchars=b"-_", validate=True)
         except Exception as error:
             raise DefinitionUnavailableException(
                 "Credential storage encryption is misconfigured."
@@ -173,7 +213,7 @@ class CredentialService:
             ) from exc
         except OpenAIError as exc:
             error_str = str(exc).lower()
-            if any(k in error_str for k in ["401", "403", "auth", "unauthorized", "forbidden", "invalid api key", "invalid key", "invalid_api_key", "bearer token", "permission denied", "access denied"]):
+            if any(k in error_str for k in ["401", "403", "auth", "unauthorized", "forbidden", "invalid api key", "invalid key", "invalid_api_key", "api key not valid", "bearer token", "permission denied", "access denied"]):
                 raise InvalidInputException(
                     f"Invalid API key for {provider}. Please verify your key in the provider's dashboard."
                 ) from exc
@@ -192,7 +232,7 @@ class CredentialService:
             if isinstance(exc, InvalidInputException):
                 raise
             err_str = str(exc).lower()
-            if any(k in err_str for k in ["401", "403", "unauthorized", "forbidden", "invalid api key", "invalid key", "invalid_api_key", "bearer token", "permission denied", "access denied"]):
+            if any(k in err_str for k in ["401", "403", "unauthorized", "forbidden", "invalid api key", "invalid key", "invalid_api_key", "api key not valid", "bearer token", "permission denied", "access denied"]):
                 raise InvalidInputException(
                     f"Invalid API key for {provider}. Please verify your key in the provider's dashboard."
                 ) from exc
@@ -208,6 +248,7 @@ class CredentialService:
         base_url: str | None = None,
         verify: bool = True,
     ) -> dict[str, str | None]:
+        self.initialize()
         normalized_provider = normalize_provider_name(provider)
         if normalized_provider not in SUPPORTED_PROVIDERS:
             raise InvalidInputException(
@@ -233,23 +274,19 @@ class CredentialService:
         access_token = secrets.token_urlsafe(32)
         encrypted_api_key = self._encrypt_api_key(normalized_provider, clean_api_key)
 
-        with sqlite3.connect(self.db_path) as connection:
-            connection.execute(
-                """
-                INSERT INTO credentials
-                    (credential_id, token_hash, provider, model, base_url, encrypted_api_key)
-                VALUES (?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    credential_id,
-                    self._hash_token(access_token),
-                    normalized_provider,
-                    resolved_model,
-                    resolved_base_url,
-                    encrypted_api_key,
-                ),
-            )
-            connection.commit()
+        self._ensure_schema()
+        try:
+            with self.engine.begin() as connection:
+                connection.execute(insert(self.credentials).values(
+                    credential_id=credential_id,
+                    token_hash=self._hash_token(access_token),
+                    provider=normalized_provider,
+                    model=resolved_model,
+                    base_url=resolved_base_url,
+                    encrypted_api_key=encrypted_api_key,
+                ))
+        except SQLAlchemyError as error:
+            raise DefinitionUnavailableException("Unable to save credentials. Please try again later.") from error
 
         return {
             "credential_id": credential_id,
@@ -264,17 +301,16 @@ class CredentialService:
         if not clean_id or not clean_token:
             raise InvalidInputException("Invalid credential reference.")
 
-        with sqlite3.connect(self.db_path) as connection:
-            cursor = connection.cursor()
-            cursor.execute(
-                """
-                SELECT provider, model, base_url, encrypted_api_key, token_hash
-                FROM credentials
-                WHERE credential_id = ?
-                """,
-                (clean_id,),
-            )
-            row = cursor.fetchone()
+        self._ensure_schema()
+        try:
+            with self.engine.connect() as connection:
+                row = connection.execute(select(
+                    self.credentials.c.provider, self.credentials.c.model,
+                    self.credentials.c.base_url, self.credentials.c.encrypted_api_key,
+                    self.credentials.c.token_hash,
+                ).where(self.credentials.c.credential_id == clean_id)).first()
+        except SQLAlchemyError as error:
+            raise DefinitionUnavailableException("Credential database is unavailable. Please try again later.") from error
 
         if not row:
             raise InvalidInputException("Saved credential was not found.")
@@ -297,22 +333,22 @@ class CredentialService:
         if not clean_id or not clean_token:
             raise InvalidInputException("Invalid credential reference.")
 
-        with sqlite3.connect(self.db_path) as connection:
-            cursor = connection.cursor()
-            cursor.execute(
-                "SELECT token_hash FROM credentials WHERE credential_id = ?",
-                (clean_id,),
-            )
-            row = cursor.fetchone()
-            if not row or not secrets.compare_digest(row[0], self._hash_token(clean_token)):
-                raise InvalidInputException("Saved credential was not found.")
-
-            connection.execute(
-                "DELETE FROM credentials WHERE credential_id = ?",
-                (clean_id,),
-            )
-            connection.commit()
+        self._ensure_schema()
+        try:
+            with self.engine.begin() as connection:
+                row = connection.execute(select(self.credentials.c.token_hash).where(
+                    self.credentials.c.credential_id == clean_id
+                )).first()
+                if not row or not secrets.compare_digest(row[0], self._hash_token(clean_token)):
+                    raise InvalidInputException("Saved credential was not found.")
+                connection.execute(delete(self.credentials).where(
+                    self.credentials.c.credential_id == clean_id,
+                    self.credentials.c.token_hash == self._hash_token(clean_token),
+                ))
             return True
+        except SQLAlchemyError as error:
+            raise DefinitionUnavailableException("Unable to remove credentials. Please try again later.") from error
+
 
 
 credential_service = CredentialService()

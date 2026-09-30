@@ -14,6 +14,7 @@
 	let shadowRoot = null;
 	let savedRange = null;
 	let currentTheme = "warm-calm";
+	let themeCommitVersion = 0;
 	let currentHighlightMode = "traditional";
 	let pointerOverlays = [];
 
@@ -1393,6 +1394,7 @@
 		const themeBtn = shadowRoot.querySelector('[data-action="theme"]');
 		const themePanel = shadowRoot.querySelector("#cc-theme-panel");
 		const themeSwatches = shadowRoot.querySelectorAll(".cc-theme-swatch");
+		themeBtn.addEventListener("mousedown", (e) => e.stopPropagation());
 		const highlightChevron = shadowRoot.querySelector('[data-action="highlight-mode"]');
 		const highlightModePanel = shadowRoot.querySelector("#cc-highlight-mode-panel");
 		const highlightModeBtns = shadowRoot.querySelectorAll(".cc-highlight-mode-btn");
@@ -1504,6 +1506,7 @@
 				toggleHighlight();
 			}
 		});
+		
 		saveBtn.addEventListener("click", saveSelection);
 
 		// Highlight mode chevron — open/close picker
@@ -1530,11 +1533,6 @@
 			});
 		});
 
-		// Close panels when clicking outside
-		document.addEventListener("mousedown", () => {
-			highlightModePanel.classList.remove("open");
-		}, { capture: true });
-
 		// Mark the active swatch on open
 		function refreshSwatches() {
 			themeSwatches.forEach((s) => {
@@ -1547,21 +1545,22 @@
 			e.stopPropagation();
 			const isOpen = themePanel.classList.toggle("open");
 			if (isOpen) refreshSwatches();
+			highlightModePanel.classList.remove("open");
 		});
 
-		// Hover — preview theme temporarily
+		// Only an explicit selection changes the theme. Hover previews could
+		// restore an older theme when the menu closes or the pointer leaves.
 		themeSwatches.forEach((swatch) => {
-			swatch.addEventListener("mouseenter", () => {
-				lookupHost.setAttribute("data-theme", swatch.dataset.themeId);
-			});
-			swatch.addEventListener("mouseleave", () => {
-				lookupHost.setAttribute("data-theme", currentTheme);
+			swatch.addEventListener("mousedown", (e) => {
+				e.preventDefault();
+				e.stopPropagation();
 			});
 
 			// Click — commit theme permanently
 			swatch.addEventListener("click", (e) => {
 				e.stopPropagation();
 				const chosen = swatch.dataset.themeId;
+				themeCommitVersion += 1;
 				currentTheme = chosen;
 				lookupHost.setAttribute("data-theme", currentTheme);
 				chrome.storage.local.set({ contentCoreTheme: currentTheme });
@@ -1570,10 +1569,8 @@
 			});
 		});
 
-		// Close panel when clicking outside
-		document.addEventListener("mousedown", () => {
-			themePanel.classList.remove("open");
-		}, { capture: true });
+		// Outside clicks are handled by the shared card-dismissal listener.
+		// Closing here during document capture would hide swatches before click.
 	}
 
 	function showSelectionCard() {
@@ -1749,7 +1746,9 @@
 
 	// Theme: read preference once, apply live to any open card, and keep it
 	// current for the next card that opens.
+	const themeReadVersion = themeCommitVersion;
 	chrome.storage.local.get({ contentCoreTheme: "warm-calm" }, ({ contentCoreTheme }) => {
+		if (themeReadVersion !== themeCommitVersion) return;
 		currentTheme = contentCoreTheme;
 		lookupHost?.setAttribute("data-theme", currentTheme);
 	});
