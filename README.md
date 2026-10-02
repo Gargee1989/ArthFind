@@ -178,4 +178,8 @@ For persistent credentials on Render, configure PostgreSQL with `DATABASE_URL`
 and keep `CREDENTIAL_ENCRYPTION_KEY` unchanged across deployments. See
 [database setup and migration](backend/DATABASE.md). The root `render.yaml`
 prepares the backend and its database as a Render Blueprint.
+<<<<<<< HEAD
 **Arth.Find: because the right meaning depends on where you find the word.**
+=======
+**Arth.Find: because the right meaning depends on where you find the word.**
+>>>>>>> bacefb53e76fce909ef5ea3a80e78167982aad53
