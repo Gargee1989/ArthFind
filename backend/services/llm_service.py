@@ -8,9 +8,14 @@ strict JSON validation, error translation, and privacy protection.
 from __future__ import annotations
 
 import json
+import hashlib
+import hmac
 import logging
 import re
-from typing import Any
+import secrets
+from threading import Lock
+from time import perf_counter
+from typing import Any, Callable
 import httpx
 from openai import (
     OpenAI,
@@ -31,6 +36,8 @@ from backend.config import (
 )
 from backend.prompts import SYSTEM_PROMPT, build_user_message
 from backend.schemas import DefineResponse
+from backend.services.definition_cache import DefinitionCache
+from backend.services.streaming import MeaningPreview
 from backend.exceptions import (
     RateLimitedException,
     ServiceTimeoutException,
@@ -60,6 +67,28 @@ class LLMService:
 
     def __init__(self) -> None:
         self._client: OpenAI | None = None
+        self._http_client: httpx.Client | None = None
+        self._http_lock = Lock()
+        self._cache_secret = secrets.token_bytes(32)
+        self._cache = DefinitionCache(settings.definition_cache_size, settings.definition_cache_ttl)
+
+    def get_http_client(self) -> httpx.Client:
+        """Share connections, never per-user authorization headers."""
+        with self._http_lock:
+            if self._http_client is None or self._http_client.is_closed:
+                self._http_client = httpx.Client(
+                    timeout=settings.llm_timeout_seconds,
+                    limits=httpx.Limits(max_connections=100, max_keepalive_connections=20),
+                )
+            return self._http_client
+
+    def close(self) -> None:
+        with self._http_lock:
+            if self._http_client is not None:
+                self._http_client.close()
+                self._http_client = None
+            self._client = None
+        self._cache.clear()
 
     def get_client(self) -> OpenAI | None:
         """Initializes or returns the cached OpenAI-compatible client."""
@@ -75,17 +104,7 @@ class LLMService:
                 "The definition service is temporarily unavailable. Please try again."
             )
 
-        if settings.base_url:
-            self._client = OpenAI(
-                base_url=settings.base_url,
-                api_key=settings.api_key,
-                timeout=settings.llm_timeout_seconds,
-            )
-        else:
-            self._client = OpenAI(
-                api_key=settings.api_key,
-                timeout=settings.llm_timeout_seconds,
-            )
+        self._client = self.create_client(settings.api_key, settings.base_url)
 
         return self._client
 
@@ -94,16 +113,18 @@ class LLMService:
         api_key: str,
         base_url: str | None = None,
     ) -> OpenAI:
-        """Creates an OpenAI-compatible client for direct calling with input credentials."""
+        """Use a credential-specific SDK wrapper over the shared connection pool."""
         if base_url:
             return OpenAI(
                 base_url=base_url,
                 api_key=api_key,
                 timeout=settings.llm_timeout_seconds,
+                http_client=self.get_http_client(),
             )
         return OpenAI(
             api_key=api_key,
             timeout=settings.llm_timeout_seconds,
+            http_client=self.get_http_client(),
         )
 
     def clean_markdown_fences(self, content: str) -> str:
@@ -201,13 +222,46 @@ class LLMService:
         provider: str | None = None,
         model: str | None = None,
         base_url: str | None = None,
+        on_meaning: Callable[[str], None] | None = None,
+    ) -> DefineResponse:
+        """Reuse validated answers and combine identical concurrent requests."""
+        cfg = resolve_llm_config(api_key, provider, model, base_url)
+        # Key material is HMACed with a process-local secret; neither credentials
+        # nor source passages are retained as cache keys or written to disk.
+        material = json.dumps([
+            cfg, target, context, SYSTEM_PROMPT, build_user_message(target, context),
+            settings.llm_temperature, settings.llm_max_tokens,
+        ], sort_keys=True).encode()
+        key = hmac.new(self._cache_secret, material, hashlib.sha256).digest()
+        started = perf_counter()
+        computed = False
+
+        def compute():
+            nonlocal computed
+            computed = True
+            return self._define_uncached(target, context, api_key, provider, model, base_url, on_meaning)
+
+        result = self._cache.get_or_compute(key, compute)
+        logger.info("Definition completed: reused=%s elapsed_ms=%.1f", not computed, (perf_counter() - started) * 1000)
+        return result
+
+    def _define_uncached(
+        self,
+        target: str,
+        context: str,
+        api_key: str | None = None,
+        provider: str | None = None,
+        model: str | None = None,
+        base_url: str | None = None,
+        on_meaning: Callable[[str], None] | None = None,
     ) -> DefineResponse:
         """
         Invokes the LLM to get the contextual definition of target in context.
         Supports direct input for provider, API key, model, and base URL,
         falling back to backend/.env configuration when omitted.
 
-        Note: The passage content is never logged or stored to protect reader privacy.
+        Source passages are never logged or persisted. Validated answers may be
+        cached briefly in memory by define().
         """
         user_message = build_user_message(target, context)
         has_direct_input = any(x is not None for x in (api_key, provider, model, base_url))
@@ -257,6 +311,7 @@ class LLMService:
                     api_key=target_key,
                     model=target_model,
                     base_url=settings.gemini_base_url,
+                    on_meaning=on_meaning,
                 )
 
         try:
@@ -270,8 +325,16 @@ class LLMService:
                 max_tokens=settings.llm_max_tokens,
                 response_format={"type": "json_object"},
                 timeout=settings.llm_timeout_seconds,
+                **({"stream": True} if on_meaning else {}),
             )
 
+            if on_meaning:
+                preview = MeaningPreview(on_meaning)
+                with completion:
+                    for chunk in completion:
+                        if chunk.choices:
+                            preview.add(chunk.choices[0].delta.content or "")
+                return self.parse_and_validate_response(preview.text)
             raw_response = completion.choices[0].message.content or ""
             return self.parse_and_validate_response(raw_response)
 
@@ -339,6 +402,7 @@ class LLMService:
                         api_key=target_key,
                         model=target_model,
                         base_url=cfg["base_url"] if has_direct_input else settings.gemini_base_url,
+                        on_meaning=on_meaning,
                     )
                 except (RateLimitedException, ServiceTimeoutException, InvalidInputException):
                     raise
@@ -375,6 +439,7 @@ class LLMService:
         api_key: str | None = None,
         model: str | None = None,
         base_url: str | None = None,
+        on_meaning: Callable[[str], None] | None = None,
     ) -> DefineResponse:
         """Call Gemini's native generateContent API."""
         effective_key = api_key or settings.api_key
@@ -395,7 +460,26 @@ class LLMService:
         }
 
         try:
-            response = httpx.post(
+            if on_meaning:
+                preview = MeaningPreview(on_meaning)
+                stream_url = url.replace(":generateContent", ":streamGenerateContent")
+                with self.get_http_client().stream(
+                    "POST", stream_url, params={"alt": "sse"},
+                    headers={"x-goog-api-key": effective_key}, json=payload,
+                    timeout=settings.llm_timeout_seconds,
+                ) as response:
+                    response.raise_for_status()
+                    for line in response.iter_lines():
+                        if not line.startswith("data:"):
+                            continue
+                        chunk = json.loads(line[5:].strip())
+                        if "error" in chunk:
+                            raise DefinitionUnavailableException()
+                        for part in (chunk.get("candidates") or [{}])[0].get("content", {}).get("parts", []):
+                            if not part.get("thought"):
+                                preview.add(part.get("text", ""))
+                return self.parse_and_validate_response(preview.text)
+            response = self.get_http_client().post(
                 url,
                 headers={"x-goog-api-key": effective_key},
                 json=payload,

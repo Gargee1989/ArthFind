@@ -122,6 +122,7 @@
 			const word = clean(item.word);
 			const definition = clean(item.definition);
 			const context = clean(item.context);
+			const hasLongContext = context.length > 240;
 			const formattedDate = formatDate(item.savedAt);
 			const originalIndex = allWords.indexOf(item);
 
@@ -151,7 +152,10 @@
 			}
 
 			const contextHtml = context
-				? `<div class="context-box">${escapeHtml(context)}</div>`
+				? `<div class="context-box${hasLongContext ? " is-collapsed" : ""}">
+					<div class="context-text">${escapeHtml(context)}</div>
+					${hasLongContext ? '<button type="button" class="context-toggle" aria-expanded="false">Read more</button>' : ""}
+				</div>`
 				: "";
 
 			const dateHtml = formattedDate
@@ -241,6 +245,15 @@
 				deleteWord(index);
 			}
 		}
+
+			const contextToggle = event.target.closest(".context-toggle");
+			if (contextToggle) {
+				const contextBox = contextToggle.closest(".context-box");
+				const expanded = contextBox.classList.toggle("is-expanded");
+				contextBox.classList.toggle("is-collapsed", !expanded);
+				contextToggle.setAttribute("aria-expanded", String(expanded));
+				contextToggle.textContent = expanded ? "Read less" : "Read more";
+			}
 	});
 
 	searchInput.addEventListener("input", () => {

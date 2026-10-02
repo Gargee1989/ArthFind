@@ -1536,58 +1536,6 @@
 			transform: translateX(-50%) translateY(0);
 		}
 
-		/* PDF loading overlay */
-		.pdf-loading-overlay {
-			position: fixed;
-			inset: 48px 0 0 0;
-			background: rgba(0, 0, 0, 0.45);
-			backdrop-filter: blur(4px);
-			-webkit-backdrop-filter: blur(4px);
-			z-index: 500;
-			display: flex;
-			align-items: center;
-			justify-content: center;
-		}
-
-		.pdf-loading-box {
-			background: var(--cc-paper);
-			border: 1px solid var(--cc-line);
-			border-radius: 16px;
-			box-shadow: 0 12px 32px rgba(0,0,0,0.18);
-			padding: 32px 40px;
-			display: flex;
-			flex-direction: column;
-			align-items: center;
-			gap: 10px;
-			min-width: 220px;
-		}
-
-		.pdf-loading-spinner {
-			width: 36px;
-			height: 36px;
-			border: 3px solid var(--cc-line);
-			border-top-color: var(--cc-accent);
-			border-radius: 50%;
-			animation: pdfSpin 0.8s linear infinite;
-		}
-
-		@keyframes pdfSpin {
-			to { transform: rotate(360deg); }
-		}
-
-		.pdf-loading-title {
-			margin: 0;
-			font-size: 15px;
-			font-weight: 600;
-			color: var(--cc-ink);
-		}
-
-		.pdf-loading-sub {
-			margin: 0;
-			font-size: 12.5px;
-			color: var(--cc-ink-soft);
-		}
-
 		/* Pointer highlight animation overlay */
 		.cc-pointer-highlight-overlay {
 			pointer-events: none;
@@ -1624,6 +1572,7 @@
 			100% { opacity: 1; translate: 0px 0px; }
 		}
 	</style>
+	<link rel="stylesheet" href="gtf-loader.css">
 </head>
 <body>
 	<!-- TOP PDF TOOLBAR -->
@@ -1789,14 +1738,70 @@
 		</div>
 	</header>
 
-	<!-- PDF Loading Overlay -->
-	<div id="pdf-loading-overlay" class="pdf-loading-overlay" style="display:none;">
-		<div class="pdf-loading-box">
-			<div class="pdf-loading-spinner"></div>
-			<p class="pdf-loading-title">Loading PDF</p>
-			<p class="pdf-loading-sub">Please wait while your document loads…</p>
-		</div>
-	</div>
+	<!-- Logo-only PDF loading overlay; existing visibility hooks are unchanged. -->
+<!-- One instance per document. Existing style.display toggles work unchanged. -->
+<div id="pdf-loading-overlay" class="gtf-loader" style="display: none;">
+  <span class="gtf-loader__sr" role="status" aria-live="polite" aria-atomic="true">Loading document</span>
+  <svg class="gtf-loader__logo" xmlns="http://www.w3.org/2000/svg" viewBox="-20 -20 851.34 566.99" width="851.34" height="566.99" aria-hidden="true" focusable="false">
+    <defs>
+      <g id="gtf-loader-mark" transform="translate(-60.101763,581.986566) scale(0.1,-0.1)">
+        <path id="gtf-loader-shape-0" d="M2402 5808 c-20 -20 -14 -32 35 -73 26 -22 124 -114 216 -205 93 -91
+176 -168 186 -171 9 -4 459 -7 1000 -8 783 0 986 -3 993 -13 4 -7 8 -992 8
+-2188 l1 -2175 173 -177 c96 -97 186 -193 201 -212 15 -20 36 -36 46 -36 18 0
+19 59 21 2398 l3 2397 1465 5 1465 5 80 65 c44 36 139 119 211 185 71 66 148
+135 170 152 82 67 337 62 -3130 63 -2447 0 -3134 -2 -3144 -12z"/>
+        <path id="gtf-loader-shape-1" d="M3265 4478 c-27 -24 -106 -92 -175 -153 -69 -61 -152 -133 -185 -160
+-70 -59 -75 -64 -68 -82 4 -9 30 -13 98 -13 51 0 117 -5 146 -10 30 -6 84 -15
+121 -19 146 -19 354 -129 480 -254 76 -74 187 -239 218 -322 12 -33 27 -69 33
+-80 11 -22 32 -134 42 -230 12 -108 -35 -356 -81 -430 -6 -11 -15 -30 -19 -43
+-20 -69 -160 -246 -257 -328 -284 -237 -593 -339 -973 -320 -194 9 -399 52
+-530 111 -120 55 -144 65 -149 65 -9 0 -188 105 -269 158 -101 66 -142 98
+-262 206 -55 50 -110 99 -123 111 -13 11 -54 56 -90 100 -37 44 -77 91 -89
+104 -61 64 -304 404 -365 511 -10 19 -30 53 -43 75 -14 22 -29 51 -35 65 -18
+41 -60 90 -77 90 -12 0 -14 -9 -10 -42 11 -107 68 -320 143 -543 45 -132 165
+-371 252 -499 130 -194 384 -474 498 -550 21 -14 66 -45 99 -69 196 -141 442
+-256 685 -317 208 -53 218 -54 450 -54 210 0 233 2 345 28 65 15 126 31 135
+35 8 5 33 12 55 16 22 4 59 15 82 26 23 10 46 19 51 19 13 0 225 109 275 141
+93 59 228 169 301 243 149 153 288 363 342 516 9 25 22 61 29 80 32 88 56 184
+71 290 44 307 -52 720 -224 963 -103 146 -269 323 -367 392 -159 111 -257 165
+-326 180 -19 4 -46 14 -61 21 -15 8 -49 14 -75 14 -42 0 -54 -6 -98 -42z"/>
+        <path id="gtf-loader-shape-2" d="M5721 4036 c-10 -11 -15 -77 -19 -229 -4 -191 -3 -214 12 -226 14
+-12 168 -14 969 -15 554 -1 960 2 972 8 22 10 82 64 255 231 63 61 142 134
+174 162 48 42 57 55 47 66 -9 12 -194 15 -1204 16 -1065 2 -1195 0 -1206 -13z"/>
+      </g>
+      <clipPath id="gtf-loader-clip" clipPathUnits="userSpaceOnUse" transform="translate(-60.101763,581.986566) scale(0.1,-0.1)">
+        <use href="#gtf-loader-shape-0"/>
+        <use href="#gtf-loader-shape-1"/>
+        <use href="#gtf-loader-shape-2"/>
+      </clipPath>
+      <linearGradient id="gtf-loader-silver">
+        <stop offset="0" stop-color="var(--gtf-highlight)" stop-opacity="0"/>
+        <stop offset=".3" stop-color="var(--gtf-highlight)" stop-opacity=".12"/>
+        <stop offset=".5" stop-color="var(--gtf-highlight)" stop-opacity=".85"/>
+        <stop offset=".7" stop-color="var(--gtf-highlight)" stop-opacity=".12"/>
+        <stop offset="1" stop-color="var(--gtf-highlight)" stop-opacity="0"/>
+      </linearGradient>
+      <linearGradient id="gtf-loader-paper" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="var(--gtf-highlight)" stop-opacity="0"/>
+        <stop offset=".5" stop-color="var(--gtf-highlight)" stop-opacity=".4"/>
+        <stop offset="1" stop-color="var(--gtf-highlight)" stop-opacity="0"/>
+      </linearGradient>
+    </defs>
+    <use href="#gtf-loader-mark" fill="currentColor"/>
+    <!-- Light moves within the original silhouette; the logo itself stays still. -->
+    <g clip-path="url(#gtf-loader-clip)">
+      <g class="gtf-loader__motion gtf-loader__sweep">
+        <path d="M-500 -35 H-240 L10 555 H-250 Z" fill="url(#gtf-loader-silver)"/>
+      </g>
+      <g class="gtf-loader__motion gtf-loader__page">
+        <rect x="438" y="-140" width="68" height="135" fill="url(#gtf-loader-paper)"/>
+      </g>
+      <g class="gtf-loader__motion gtf-loader__read">
+        <rect x="430" y="177" width="140" height="53" fill="url(#gtf-loader-silver)"/>
+      </g>
+    </g>
+  </svg>
+</div>
 
 	<main id="pdf-render">
 		<div id="empty-state" class="empty-dropzone">
@@ -1823,6 +1828,8 @@
 
 	<script type="module" src="lib/pdfjs/pdf.min.js"></script>
 	<script src="crypto.js"></script>
+	<script src="definition-response.js"></script>
+	<script src="gtf-loader.js"></script>
 	<script type="module" src="pdf-reader.js"></script>
 </body>
 </html>

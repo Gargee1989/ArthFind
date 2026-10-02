@@ -76,11 +76,13 @@ def test_changed_encryption_key_cannot_read_existing_credentials(store, monkeypa
         store.resolve(saved["credential_id"], saved["credential_token"])
 
 
-def test_render_requires_postgresql(monkeypatch):
+def test_render_allows_sqlite_fallback_without_database_url(monkeypatch):
     monkeypatch.setenv("RENDER", "true")
-    for url in ("", "sqlite:///:memory:"):
-        with pytest.raises(DefinitionUnavailableException, match="PostgreSQL"):
-            CredentialService(database_url=url)
+    service = CredentialService(database_url="")
+    try:
+        assert service.storage_backend == "sqlite"
+    finally:
+        service.engine.dispose()
 
 
 @pytest.mark.parametrize("scheme", ["postgres", "postgresql", "postgresql+psycopg"])

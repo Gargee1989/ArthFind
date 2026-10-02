@@ -47,8 +47,6 @@ class CredentialService:
         # An explicit file path is useful for isolated tests and legacy imports.
         configured_url = database_url if database_url is not None else os.getenv("DATABASE_URL", "").strip()
         if db_path is not None or not configured_url:
-            if os.getenv("RENDER") == "true" and db_path is None:
-                raise DefinitionUnavailableException("Set DATABASE_URL to a persistent PostgreSQL database on Render.")
             url = URL.create("sqlite", database=str(self.db_path))
         else:
             url = make_url(configured_url)

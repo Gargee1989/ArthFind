@@ -8,12 +8,14 @@ Enforces strict input validation, privacy safeguards, and standardized error env
 from __future__ import annotations
 
 import logging
+import asyncio
+import json
 from contextlib import asynccontextmanager
 from typing import Any
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -64,6 +66,7 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
+        await run_in_threadpool(llm_service.close)
         credential_service.engine.dispose()
         logger.info("ContentCore backend shut down.")
 
@@ -174,7 +177,7 @@ async def handle_generic_exception(
         504: {"model": ErrorResponse},
     },
 )
-async def define_text(request: Request) -> JSONResponse:
+async def define_text(request: Request):
     """
     Context-aware definition endpoint.
     
@@ -206,6 +209,51 @@ async def define_text(request: Request) -> JSONResponse:
     direct_provider = credential_config["provider"] if credential_config else req.provider
     direct_model = credential_config["model"] if credential_config else req.model
     direct_base_url = credential_config["base_url"] if credential_config else req.base_url
+
+    if "text/event-stream" in request.headers.get("accept", ""):
+        async def events():
+            queue = asyncio.Queue()
+            loop = asyncio.get_running_loop()
+            disconnected = False
+
+            def on_meaning(meaning):
+                if not disconnected:
+                    loop.call_soon_threadsafe(queue.put_nowait, ("meaning", {"meaning": meaning}))
+
+            async def produce():
+                try:
+                    result = await run_in_threadpool(
+                        llm_service.define, target=req.target, context=req.context,
+                        api_key=direct_api_key, provider=direct_provider,
+                        model=direct_model, base_url=direct_base_url,
+                        on_meaning=on_meaning,
+                    )
+                    await queue.put(("result", result.model_dump()))
+                except ContentCoreException as error:
+                    await queue.put(("error", {"status": "error", "code": error.code, "message": error.message}))
+                except Exception:
+                    await queue.put(("error", {"status": "error", "code": "DEFINITION_UNAVAILABLE", "message": "The definition service is temporarily unavailable. Please try again."}))
+
+            producer = asyncio.create_task(produce())
+            try:
+                while True:
+                    try:
+                        event, data = await asyncio.wait_for(queue.get(), timeout=10)
+                    except asyncio.TimeoutError:
+                        yield ": keep-alive\n\n"
+                        continue
+                    yield f"event: {event}\ndata: {json.dumps(data)}\n\n"
+                    if event in ("result", "error"):
+                        break
+            finally:
+                disconnected = True
+                # A running shared computation may still serve other requests.
+                # Finish it to release the upstream connection and fill the cache.
+                await asyncio.shield(producer)
+
+        return StreamingResponse(events(), media_type="text/event-stream", headers={
+            "Cache-Control": "no-store", "X-Accel-Buffering": "no",
+        })
 
     # Call LLM contextual engine
     result: DefineResponse = await run_in_threadpool(
