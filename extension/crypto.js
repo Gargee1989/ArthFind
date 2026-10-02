@@ -3,8 +3,6 @@
 
 	// =========================================================================
 	// BACKEND CONFIGURATION
-	// Change this URL to your deployed backend URL in production.
-	// Example: "https://api.yourdomain.com/define"
 	// =========================================================================
 	const BACKEND_ENDPOINT = "https://arthfind-backend.onrender.com/define";
 

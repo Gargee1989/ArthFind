@@ -28,3 +28,8 @@ The credential test opens the real popup in separate browser contexts sharing
 a stub of persistent Chrome storage. Registration and deletion use fake backend
 responses and disposable test keys. It checks automatic credential restoration,
 encryption, and recovery from browser-storage and network failures.
+
+The definition tests check split UTF-8 and SSE messages, compatibility with JSON
+backends, interrupted streams, and provider errors. Browser checks cover both
+reading surfaces: early meaning display, final response fields, HTML escaping,
+failure after a preview, and ignoring late responses from dismissed cards.

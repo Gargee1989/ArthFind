@@ -1,7 +1,6 @@
 (() => {
 	"use strict";
 
-	const CACHE_KEY = "contentCoreLookupCache";
 	const MAX_CONTEXT_LENGTH = 5000;
 	let selectionTimer;
 	let selectedText = "";
@@ -298,10 +297,6 @@
 		setTimeout(removeCard, 350);
 	}
 
-	async function getCache() {
-		return (await chrome.storage.local.get(CACHE_KEY))[CACHE_KEY] || {};
-	}
-
 	function renderCardError(cardContent, title, desc, hint = "") {
 		cardContent.innerHTML = `
 			<div class="cc-card-error-container">
@@ -314,6 +309,8 @@
 
 	// Call backend API /define
 	async function explainSelection(cardContent) {
+		const requestedSelection = selectionData;
+		const isCurrent = () => cardContent.isConnected && selectionData === requestedSelection;
 		if (!shadowRoot || !selectedText) return;
 
 		let settings;
@@ -338,21 +335,6 @@
 			return;
 		}
 
-		const context = selectedContext;
-		const cacheKey = `${location.href}::${selectedText.toLowerCase()}::${context}`;
-		const cache = await getCache();
-
-		if (cache[cacheKey]) {
-			const cached = cache[cacheKey];
-			const meaning = typeof cached === "object" ? cached.meaning : cached;
-			const tone = typeof cached === "object" ? cached.tone : "";
-			const synonym = typeof cached === "object" ? cached.synonym : "";
-			currentDefinition = meaning;
-			currentTone = tone;
-			currentSynonym = synonym;
-			renderCardDefinition(cardContent, meaning, tone, synonym);
-			return;
-		}
 
 		if (typeof navigator !== "undefined" && navigator.onLine === false) {
 			renderCardError(
@@ -376,9 +358,9 @@
 			const endpoint = settings.contentCoreEndpoint || ContentCoreCrypto.BACKEND_ENDPOINT;
 
 			const payload = {
-				word: selectionData.word,
-				target: selectionData.word,
-				context: selectionData.context,
+				word: requestedSelection.word,
+				target: requestedSelection.word,
+				context: requestedSelection.context,
 				credential_id: settings.contentCoreCredentialId,
 				credential_token: settings.contentCoreCredentialToken
 			};
@@ -388,11 +370,12 @@
 				response = await fetch(endpoint, {
 					method: "POST",
 					headers: {
-						"Content-Type": "application/json"
+						"Content-Type": "application/json", "Accept": "text/event-stream"
 					},
 					body: JSON.stringify(payload)
 				});
 			} catch (networkError) {
+				if (!isCurrent()) return;
 				if (typeof navigator !== "undefined" && navigator.onLine === false) {
 					renderCardError(
 						cardContent,
@@ -409,6 +392,10 @@
 				return;
 			}
 
+			if (!isCurrent()) {
+				await response.body?.cancel();
+				return;
+			}
 			if (!response.ok) {
 				let errTitle = "Service Error";
 				let errDesc = `Request failed (${response.status})`;
@@ -451,7 +438,10 @@
 				return;
 			}
 
-			const result = await response.json();
+			const result = await ContentCoreDefinition.read(response, (meaning) => {
+                if (isCurrent()) renderCardDefinition(cardContent, clean(meaning), "", "");
+            });
+            if (!isCurrent()) return;
 			const meaning = clean(String(result.meaning || result.definition || result.explanation || result.answer || ""));
 			if (!meaning || meaning === "No definition") {
 				renderCardError(cardContent, "No Definition", "The AI provider did not return an explanation for this selection.");
@@ -462,14 +452,9 @@
 			currentTone = clean(String(result.tone || ""));
 			currentSynonym = clean(String(result.synonym || ""));
 
-			cache[cacheKey] = {
-				meaning: currentDefinition,
-				tone: currentTone,
-				synonym: currentSynonym
-			};
-			await chrome.storage.local.set({ [CACHE_KEY]: cache });
 			renderCardDefinition(cardContent, currentDefinition, currentTone, currentSynonym);
 		} catch (error) {
+			if (!isCurrent()) return;
 			renderCardError(cardContent, "Unexpected Error", error.message || "An unexpected error occurred.");
 		}
 	}
@@ -489,7 +474,7 @@
 			if (synonym) {
 				metaHtml += `
 					<div class="cc-card-meta-row">
-						<span class="cc-meta-badge">Synonym:</span>
+						<span class="cc-meta-badge">In short:</span>
 						<span class="cc-meta-value">${escapeHtml(synonym)}</span>
 					</div>
 				`;

@@ -12,7 +12,7 @@
 		"128": "icon-128.png"
 	},
 	"action": {
-		"default_title": "Context Core settings",
+		"default_title": "Arth.Find settings",
 		"default_popup": "popup.html",
 		"default_icon": {
 			"16": "icon-16.png",
@@ -24,7 +24,7 @@
 	"content_scripts": [
 		{
 			"matches": ["<all_urls>"],
-			"js": ["crypto.js", "content.js"],
+			"js": ["crypto.js", "definition-response.js", "content.js"],
 			"run_at": "document_start",
 			"all_frames": true
 		}

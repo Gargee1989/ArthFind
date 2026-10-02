@@ -221,6 +221,7 @@
 			border: 1px solid var(--border);
 			border-radius: var(--radius);
 			padding: 20px;
+			min-height: 320px;
 			display: flex;
 			flex-direction: column;
 			gap: 14px;
@@ -285,6 +286,35 @@
 			color: var(--text-muted);
 			line-height: 1.45;
 			overflow-wrap: anywhere;
+		}
+
+		.context-text {
+			display: -webkit-box;
+			-webkit-box-orient: vertical;
+			-webkit-line-clamp: 3;
+			overflow: hidden;
+		}
+
+		.context-box.is-expanded .context-text {
+			display: block;
+			overflow: visible;
+		}
+
+		.context-toggle {
+			margin-top: 8px;
+			padding: 0;
+			border: none;
+			background: transparent;
+			color: var(--accent);
+			font: inherit;
+			font-style: normal;
+			font-weight: 600;
+			cursor: pointer;
+		}
+
+		.context-toggle:hover {
+			color: var(--accent-hover);
+			text-decoration: underline;
 		}
 
 		.card-footer {

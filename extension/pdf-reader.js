@@ -348,31 +348,28 @@
 	function contextFor(selection, sourceText = pageText) {
 		const selected = clean(selection ? selection.toString() : "");
 		const cleanSource = clean(sourceText);
+		if (!selected) return "";
 		const index = cleanSource.toLowerCase().indexOf(selected.toLowerCase());
-		if (!selected || index < 0) {
-			const base = cleanSource.slice(0, 1200);
-			const firstLine = clean(sourceText.split(/\r?\n/)[0] || "");
-			if (firstLine && firstLine.length <= 100 && !/[.!?]$/.test(firstLine)) {
-				return `[Heading: ${firstLine}] ${base}`.slice(0, 5000);
-			}
-			return base;
-		}
+		// PDF text can differ from the browser selection. Do not substitute an
+		// unrelated passage from the start of the page when matching fails.
+		if (index < 0) return selected;
 
-		let baseContext = cleanSource;
-		if (cleanSource.length > 5000) {
-			const sentenceStart = Math.max(
-				cleanSource.lastIndexOf(".", index - 1),
-				cleanSource.lastIndexOf("!", index - 1),
-				cleanSource.lastIndexOf("?", index - 1)
-			) + 1;
-			const sentenceEndCandidates = [
-				cleanSource.indexOf(".", index + selected.length),
-				cleanSource.indexOf("!", index + selected.length),
-				cleanSource.indexOf("?", index + selected.length)
-			].filter((position) => position >= 0);
-			const sentenceEnd = sentenceEndCandidates.length ? Math.min(...sentenceEndCandidates) + 1 : cleanSource.length;
-			baseContext = cleanSource.slice(sentenceStart, sentenceEnd).trim();
+		const selectionEnd = index + selected.length;
+		const sentences = Array.from(new Intl.Segmenter(undefined, { granularity: "sentence" }).segment(cleanSource));
+		const first = sentences.findIndex(part => part.index + part.segment.length > index);
+		const last = sentences.findIndex(part => part.index + part.segment.length >= selectionEnd);
+		let start = sentences[Math.max(0, first - 1)].index;
+		const next = sentences[Math.min(sentences.length - 1, last + 1)];
+		let end = next.index + next.segment.length;
+
+		// Include one sentence on either side, but bound long sentences and
+		// punctuation-free pages around the selection instead of the page start.
+		const maxLength = Math.max(1200, selected.length);
+		if (end - start > maxLength) {
+			start = Math.max(start, index - Math.floor((maxLength - selected.length) / 2));
+			end = Math.min(end, start + maxLength);
 		}
+		const baseContext = cleanSource.slice(start, end).trim();
 
 		const firstLine = clean(sourceText.split(/\r?\n/)[0] || "");
 		let heading = "";
@@ -381,7 +378,7 @@
 		}
 
 		const result = heading ? `[Heading: ${heading}] ${baseContext}` : baseContext;
-		return result.slice(0, 5000);
+		return result;
 	}
 
 	// Remove Floating Pill & Dropdown
@@ -581,7 +578,7 @@
 			if (synonym) {
 				metaHtml += `
 					<div class="cc-card-meta-row">
-						<span class="cc-meta-badge">Synonym:</span>
+						<span class="cc-meta-badge">In short:</span>
 						<span class="cc-meta-value">${escapeHtml(synonym)}</span>
 					</div>
 				`;
@@ -596,6 +593,8 @@
 
 	// Explain This - Call /define API
 	async function explainWord(cardContent) {
+		const requestedSelection = selectionData;
+		const isCurrent = () => cardContent.isConnected && selectionData === requestedSelection;
 		let settings;
 		try {
 			settings = await ContentCoreCrypto.readSettings();
@@ -640,9 +639,9 @@
 			const endpoint = settings.contentCoreEndpoint || ContentCoreCrypto.BACKEND_ENDPOINT;
 
 			const payload = {
-				word: selectionData.word,
-				target: selectionData.word,
-				context: selectionData.context,
+				word: requestedSelection.word,
+				target: requestedSelection.word,
+				context: requestedSelection.context,
 				credential_id: settings.contentCoreCredentialId,
 				credential_token: settings.contentCoreCredentialToken
 			};
@@ -651,10 +650,11 @@
 			try {
 				response = await fetch(endpoint, {
 					method: "POST",
-					headers: { "Content-Type": "application/json" },
+					headers: { "Content-Type": "application/json", "Accept": "text/event-stream" },
 					body: JSON.stringify(payload)
 				});
 			} catch (networkError) {
+				if (!isCurrent()) return;
 				if (typeof navigator !== "undefined" && navigator.onLine === false) {
 					renderCardError(cardContent, "No Internet Connection", "Your device appears to be offline. Please check your network and try again.");
 				} else {
@@ -663,6 +663,10 @@
 				return;
 			}
 
+			if (!isCurrent()) {
+				await response.body?.cancel();
+				return;
+			}
 			if (!response.ok) {
 				let errTitle = "Service Error";
 				let errDesc = `Request failed (${response.status})`;
@@ -686,7 +690,10 @@
 				return;
 			}
 
-			const result = await response.json();
+			const result = await ContentCoreDefinition.read(response, (meaning) => {
+                if (isCurrent()) renderCardDefinition(cardContent, clean(meaning), "", "");
+            });
+            if (!isCurrent()) return;
 			const meaning = clean(String(result.meaning || result.definition || result.explanation || result.answer || ""));
 
 			if (!meaning || meaning === "No definition") {
@@ -699,6 +706,7 @@
 			currentSynonym = clean(String(result.synonym || ""));
 			renderCardDefinition(cardContent, currentDefinition, currentTone, currentSynonym);
 		} catch (error) {
+			if (!isCurrent()) return;
 			renderCardError(cardContent, "Error", error.message || "Definition service unavailable.");
 		}
 	}
@@ -1452,8 +1460,8 @@
 
 		removeFloatingPill();
 		clearSearchHighlights();
-		renderTarget.replaceChildren();
 		pageText = "";
+		const pageFragment = document.createDocumentFragment();
 
 		try {
 			const pdf = pdfDoc;
@@ -1530,10 +1538,11 @@
 					throw renderErr;
 				}
 				if (signal.aborted) return;
-				renderTarget.appendChild(wrapper);
+				pageFragment.appendChild(wrapper);
 				restorePdfHighlights(wrapper);
 			}
 
+			renderTarget.replaceChildren(pageFragment);
 			pageText = clean(pageText);
 			if (findInput.value.trim()) performSearch();
 			refreshPointerHighlights();

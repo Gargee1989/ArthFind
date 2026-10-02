@@ -35,7 +35,7 @@ PLACEHOLDERS = {
     "sk-proj-yourActualKeyHere",
 }
 
-# The 3 supported LLM API providers from STEP.md
+# The 3 supported LLM API providers from docs/STEP.md
 PROVIDER_GEMINI = "Google Gemini"
 PROVIDER_OPENAI = "OpenAI"
 PROVIDER_NVIDIA = "NVIDIA NIM"
@@ -185,6 +185,8 @@ class Settings:
         self.llm_timeout_seconds: float = float(os.getenv("LLM_TIMEOUT_SECONDS", "30.0"))
         self.llm_temperature: float = float(os.getenv("LLM_TEMPERATURE", "0.1"))
         self.llm_max_tokens: int = int(os.getenv("LLM_MAX_TOKENS", "1024"))
+        self.definition_cache_size: int = int(os.getenv("DEFINITION_CACHE_SIZE", "256"))
+        self.definition_cache_ttl: float = float(os.getenv("DEFINITION_CACHE_TTL_SECONDS", "300"))
 
         # Server defaults
         self.host: str = os.getenv("HOST", "127.0.0.1")

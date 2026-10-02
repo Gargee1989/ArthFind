@@ -4,7 +4,7 @@ ContentCore - Backend LLM API Direct Connection & Test
 Directly calls the configured LLM API provider by taking inputs (provider, API key, model),
 or falling back to environment variables from backend/.env.
 
-The 3 supported providers (defined in STEP.md) are:
+The 3 supported providers (defined in docs/STEP.md) are:
 1. Google Gemini (default model: gemini-3.6-flash)
 2. OpenAI (default model: gpt-4o-mini)
 3. NVIDIA NIM (default model: meta/llama-3.2-11b-vision-instruct)
@@ -30,7 +30,7 @@ if ENV_FILE_PATH.exists():
 else:
     load_dotenv()
 
-# The 3 supported LLM API providers from STEP.md
+# The 3 supported LLM API providers from docs/STEP.md
 PROVIDER_GEMINI = "Google Gemini"
 PROVIDER_OPENAI = "OpenAI"
 PROVIDER_NVIDIA = "NVIDIA NIM"
@@ -103,7 +103,7 @@ def call_llm(
     )
 
     if provider_name == PROVIDER_GEMINI:
-        # First attempt OpenAI-compatible endpoint as documented in STEP.md
+        # First attempt OpenAI-compatible endpoint as documented in docs/STEP.md
         try:
             client = OpenAI(
                 base_url=resolved_base_url or DEFAULT_BASE_URLS[PROVIDER_GEMINI],
@@ -173,7 +173,7 @@ def test_connection(
         print("=" * 65)
         print("ContentCore - LLM API Direct Connection & Test")
         print("=" * 65)
-        print("Supported Providers (from STEP.md):")
+        print("Supported Providers (from docs/STEP.md):")
         print("  [1] Google Gemini (default model: gemini-3.6-flash)")
         print("  [2] OpenAI        (default model: gpt-4o-mini)")
         print("  [3] NVIDIA NIM    (default model: meta/llama-3.2-11b-vision-instruct)")
@@ -320,7 +320,7 @@ def main():
     parser.add_argument(
         "--model",
         "-m",
-        help="Model name (optional; defaults to provider recommended model from STEP.md)",
+        help="Model name (optional; defaults to provider recommended model from docs/STEP.md)",
     )
     parser.add_argument(
         "--base-url",
