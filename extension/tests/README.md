@@ -15,7 +15,8 @@ Alternatively, set `CHROME_PATH` to an installed Chrome executable. Set
 The PDF test loads the real bundled PDF.js renderer and a synthetic two-page
 fixture containing colored text, white text on black, multiple lines, rotated
 text, and a rotated page. It verifies mouse selection, partial highlighting and
-removal, long selections, search, zoom, and pointer placement while scrolling.
+removal, long selections, search, zoom, highlight color selection, pointer
+placement while scrolling, and persistent same-document highlights.
 
 The theme test checks all eight rendered word-card colors, mouse and keyboard
 selection, reopening cards, and the PDF toolbar. It preserves the web card's

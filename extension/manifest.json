@@ -3,8 +3,8 @@
 	"name": "Arth.Find",
 	"version": "0.1.0",
 	"description": "Get context-aware explanations for words while reading.",
-	"permissions": ["storage"],
-	"host_permissions": ["<all_urls>"],
+	"permissions": ["storage", "notifications"],
+	"host_permissions": ["<all_urls>", "file:///*"],
 	"icons": {
 		"16": "icon-16.png",
 		"32": "icon-32.png",
@@ -20,6 +20,9 @@
 			"48": "icon-48.png",
 			"128": "icon-128.png"
 		}
+	},
+	"background": {
+		"service_worker": "background.js"
 	},
 	"content_scripts": [
 		{

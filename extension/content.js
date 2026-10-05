@@ -796,7 +796,9 @@
 				.cc-dropdown-card {
 					position: relative;
 					margin-top: 8px;
-					width: 300px;
+					width: min(380px, calc(100vw - 32px));
+					max-width: calc(100vw - 32px);
+					max-height: calc(100vh - 80px);
 					background: var(--cc-paper);
 					border-radius: 20px;
 					box-shadow: 0 1px 2px rgba(38, 38, 74, 0.04), 0 12px 28px rgba(38, 38, 74, 0.13);
@@ -1475,13 +1477,17 @@
 				card.style.marginTop    = "0";
 				card.style.marginBottom = "8px";
 				card.style.order        = "-1";
-				requestAnimationFrame(() => {
-					const cardH  = card.offsetHeight;
-					const curTop = parseFloat(pillContainer.style.top) || 0;
-					const newTop = Math.max(8, curTop - cardH - 8);
-					pillContainer.style.top = `${Math.round(newTop)}px`;
-				});
 			}
+			requestAnimationFrame(() => {
+				const viewportPadding = 16;
+				const rect = pillContainer.getBoundingClientRect();
+				const maxTop = Math.max(8, window.innerHeight - rect.height - viewportPadding);
+				const top = Math.max(8, Math.min(maxTop, rect.top));
+				const maxLeft = Math.max(viewportPadding, window.innerWidth - rect.width - viewportPadding);
+				const left = Math.max(viewportPadding, Math.min(maxLeft, rect.left));
+				pillContainer.style.top = `${Math.round(top)}px`;
+				pillContainer.style.left = `${Math.round(left)}px`;
+			});
 		});
 
 		highlightBtn.addEventListener("click", () => {

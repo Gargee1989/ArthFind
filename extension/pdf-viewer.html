@@ -910,7 +910,7 @@
 
 		/* Highlighter Mark Styling */
 		mark.cc-pdf-highlight {
-			background-color: rgba(255, 218, 64, 0.58) !important;
+			background-color: var(--cc-highlight-fill, rgba(255, 218, 64, 0.58)) !important;
 			color: transparent !important;
 			font: inherit;
 			text-shadow: none;
@@ -919,7 +919,7 @@
 			box-decoration-break: clone;
 			-webkit-box-decoration-break: clone;
 			padding: 0;
-			box-shadow: inset 0 -1px rgba(161, 98, 7, 0.45);
+			box-shadow: inset 0 -1px var(--cc-highlight-shadow, rgba(161, 98, 7, 0.45));
 		}
 
 		/* Pointer-only marks have no background */
@@ -1217,6 +1217,41 @@
 			flex-shrink: 0;
 		}
 
+		.cc-highlight-mode-divider {
+			height: 1px;
+			background: var(--cc-line);
+			margin: 4px 2px;
+		}
+
+		.cc-highlight-colors {
+			display: grid;
+			grid-template-columns: repeat(5, 1fr);
+			gap: 6px;
+			padding: 0 6px 6px;
+		}
+
+		.cc-highlight-color-btn {
+			width: 18px;
+			height: 18px;
+			border-radius: 50%;
+			border: 1px solid color-mix(in srgb, var(--cc-line) 75%, var(--cc-ink-soft) 25%);
+			background: var(--cc-highlight-fill, rgba(255, 218, 64, 0.58));
+			box-shadow: inset 0 -1px var(--cc-highlight-shadow, rgba(161, 98, 7, 0.45));
+			cursor: pointer;
+			padding: 0;
+			transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
+		}
+
+		.cc-highlight-color-btn:hover {
+			transform: scale(1.08);
+		}
+
+		.cc-highlight-color-btn[data-active="true"] {
+			border-color: var(--cc-accent);
+			box-shadow: 0 0 0 1px color-mix(in srgb, var(--cc-accent) 35%, transparent), inset 0 -1px var(--cc-highlight-shadow, rgba(161, 98, 7, 0.45));
+			transform: scale(1.08);
+		}
+
 		/* Theme picker panel */
 		.cc-theme-panel {
 			position: absolute;
@@ -1293,7 +1328,9 @@
 		.cc-dropdown-card {
 			position: relative;
 			margin-top: 8px;
-			width: 300px;
+			width: min(380px, calc(100vw - 32px));
+			max-width: calc(100vw - 32px);
+			max-height: calc(100vh - 80px);
 			background: var(--cc-paper);
 			border-radius: 20px;
 			box-shadow: 0 1px 2px rgba(38, 38, 74, 0.04), 0 12px 28px rgba(38, 38, 74, 0.13);
@@ -1833,4 +1870,3 @@
 	<script type="module" src="pdf-reader.js"></script>
 </body>
 </html>
-

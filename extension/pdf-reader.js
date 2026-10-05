@@ -58,12 +58,48 @@
 	let savedRange = null;
 	// Text offsets stay stable when PDF.js rebuilds the text layer at another zoom.
 	let pdfHighlights = [];
+	let currentPdfFingerprint = "";
+
+	const HIGHLIGHT_STORAGE_KEY = "contentCorePdfHighlightsByFingerprint";
+	const MAX_PDF_HIGHLIGHT_DOCS = 40;
+	const HIGHLIGHT_COLORS = Object.freeze({
+		yellow: { fill: "rgba(255, 218, 64, 0.58)", shadow: "rgba(161, 98, 7, 0.45)" },
+		green: { fill: "rgba(134, 239, 172, 0.56)", shadow: "rgba(22, 101, 52, 0.34)" },
+		blue: { fill: "rgba(147, 197, 253, 0.58)", shadow: "rgba(30, 64, 175, 0.35)" },
+		pink: { fill: "rgba(244, 171, 198, 0.56)", shadow: "rgba(157, 23, 77, 0.33)" },
+		orange: { fill: "rgba(253, 186, 116, 0.56)", shadow: "rgba(154, 52, 18, 0.34)" }
+	});
+	let currentHighlightColor = "yellow";
 
 	// In-PDF Search State
 	let findMatches = [];
 	let activeFindIndex = -1;
 
 	const clean = (value) => String(value || "").replace(/\s+/g, " ").trim();
+	const normalizeHighlightColor = (value) =>
+		Object.prototype.hasOwnProperty.call(HIGHLIGHT_COLORS, value) ? value : "yellow";
+
+	function applyHighlightAppearance(mark, colorId) {
+		const color = HIGHLIGHT_COLORS[normalizeHighlightColor(colorId)];
+		mark.dataset.highlightColor = normalizeHighlightColor(colorId);
+		mark.style.setProperty("--cc-highlight-fill", color.fill);
+		mark.style.setProperty("--cc-highlight-shadow", color.shadow);
+	}
+
+	function sanitizePdfHighlightEntry(highlight) {
+		const page = String(highlight?.page ?? "");
+		const item = String(highlight?.item ?? "");
+		const start = Number(highlight?.start);
+		const end = Number(highlight?.end);
+		const mode = highlight?.mode === "pointer" ? "pointer" : "traditional";
+		const color = normalizeHighlightColor(highlight?.color);
+		if (!page || !item || !Number.isFinite(start) || !Number.isFinite(end) || end <= start) return null;
+		return { page, item, start, end, mode, color };
+	}
+
+	function getStoredHighlightRecords(rawValue) {
+		return rawValue && typeof rawValue === "object" && !Array.isArray(rawValue) ? rawValue : {};
+	}
 
 	// Theme module — applies contentCoreTheme to html[data-theme]
 	let _lastAppliedTheme = null;
@@ -79,11 +115,18 @@
 		if (themeReadVersion !== themeCommitVersion) return;
 		applyTheme(contentCoreTheme);
 	});
+	chrome.storage.local.get({ contentCoreHighlightColor: "yellow" }, ({ contentCoreHighlightColor }) => {
+		currentHighlightColor = normalizeHighlightColor(contentCoreHighlightColor);
+	});
 
 	chrome.storage.onChanged.addListener((changes, area) => {
-		if (area === "local" && changes.contentCoreTheme) {
+		if (area !== "local") return;
+		if (changes.contentCoreTheme) {
 			applyTheme(changes.contentCoreTheme.newValue);
 			refreshTbSwatches();
+		}
+		if (changes.contentCoreHighlightColor?.newValue) {
+			currentHighlightColor = normalizeHighlightColor(changes.contentCoreHighlightColor.newValue);
 		}
 	});
 
@@ -472,9 +515,68 @@
 				for (const range of textRanges(span, highlight.start, highlight.end).reverse()) {
 					const mark = document.createElement("mark");
 					mark.className = "cc-pdf-highlight" + (highlight.mode === "pointer" ? " cc-pointer-only" : "");
+					applyHighlightAppearance(mark, highlight.color);
 					range.surroundContents(mark);
 				}
 			}
+		}
+	}
+
+	async function computePdfFingerprint(arrayBuffer) {
+		try {
+			if (!globalThis.crypto?.subtle) {
+				console.warn("[arth.find] crypto.subtle unavailable, using fallback fingerprint.");
+				return `fallback:${currentDocument}:${arrayBuffer.byteLength}`;
+			}
+			const digest = await globalThis.crypto.subtle.digest("SHA-256", arrayBuffer);
+			const hashBytes = new Uint8Array(digest);
+			return Array.from(hashBytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+		} catch (error) {
+			console.warn("[arth.find] Failed to compute PDF fingerprint:", error);
+			return `fallback:${currentDocument}:${arrayBuffer.byteLength}`;
+		}
+	}
+
+	async function loadStoredHighlightsForCurrentPdf() {
+		if (!currentPdfFingerprint) {
+			pdfHighlights = [];
+			return;
+		}
+		try {
+			const stored = await chrome.storage.local.get({ [HIGHLIGHT_STORAGE_KEY]: {} });
+			const records = getStoredHighlightRecords(stored[HIGHLIGHT_STORAGE_KEY]);
+			const highlights = records[currentPdfFingerprint]?.highlights;
+			pdfHighlights = Array.isArray(highlights)
+				? highlights.map(sanitizePdfHighlightEntry).filter(Boolean)
+				: [];
+		} catch (error) {
+			console.warn("[arth.find] Failed to load PDF highlights:", error);
+			pdfHighlights = [];
+		}
+	}
+
+	async function persistHighlightsForCurrentPdf() {
+		if (!currentPdfFingerprint) return;
+		try {
+			const stored = await chrome.storage.local.get({ [HIGHLIGHT_STORAGE_KEY]: {} });
+			const records = getStoredHighlightRecords(stored[HIGHLIGHT_STORAGE_KEY]);
+			if (!pdfHighlights.length) {
+				delete records[currentPdfFingerprint];
+			} else {
+				records[currentPdfFingerprint] = {
+					name: currentDocument,
+					updatedAt: Date.now(),
+					highlights: pdfHighlights.map(sanitizePdfHighlightEntry).filter(Boolean)
+				};
+			}
+			const trimmed = Object.fromEntries(
+				Object.entries(records)
+					.sort(([, a], [, b]) => Number(b?.updatedAt || 0) - Number(a?.updatedAt || 0))
+					.slice(0, MAX_PDF_HIGHLIGHT_DOCS)
+			);
+			await chrome.storage.local.set({ [HIGHLIGHT_STORAGE_KEY]: trimmed });
+		} catch (error) {
+			console.warn("[arth.find] Failed to persist PDF highlights:", error);
 		}
 	}
 
@@ -482,7 +584,7 @@
 		showPointerHighlight([...renderTarget.querySelectorAll(".cc-pointer-only")]);
 	}
 
-	function toggleHighlight(mode = "traditional") {
+	async function toggleHighlight(mode = "traditional") {
 		const selection = window.getSelection();
 		const range = savedRange || (selection?.rangeCount ? selection.getRangeAt(0) : null);
 		const segments = selectedPdfSegments(range);
@@ -499,13 +601,14 @@
 			});
 			if (!remove) {
 				const { span, ...offsets } = segment;
-				pdfHighlights.push({ ...offsets, mode });
+				pdfHighlights.push({ ...offsets, mode, color: currentHighlightColor });
 			}
 		}
 		selection?.removeAllRanges();
 		savedRange = null;
 		restorePdfHighlights();
 		refreshPointerHighlights();
+		await persistHighlightsForCurrentPdf();
 		floatingPillContainer?.querySelector('[data-action="highlight"]')?.classList.toggle("active", !remove);
 		showToast(remove ? "Highlight removed" : "Highlighted");
 		clearTimeout(pillRemovalTimer);
@@ -718,7 +821,7 @@
 	}
 
 	function doPointerHighlight() {
-		toggleHighlight("pointer");
+		void toggleHighlight("pointer");
 	}
 
 	// Pointer highlight animation — one overlay per mark, all persist until next call
@@ -855,6 +958,15 @@
 							</svg>
 							Pointer highlight
 						</button>
+						<div class="cc-highlight-mode-divider"></div>
+						<div class="cc-highlight-mode-label">Highlight color</div>
+						<div class="cc-highlight-colors">
+							<button class="cc-highlight-color-btn" data-color="yellow" aria-label="Yellow highlight" title="Yellow highlight"></button>
+							<button class="cc-highlight-color-btn" data-color="green" aria-label="Green highlight" title="Green highlight"></button>
+							<button class="cc-highlight-color-btn" data-color="blue" aria-label="Blue highlight" title="Blue highlight"></button>
+							<button class="cc-highlight-color-btn" data-color="pink" aria-label="Pink highlight" title="Pink highlight"></button>
+							<button class="cc-highlight-color-btn" data-color="orange" aria-label="Orange highlight" title="Orange highlight"></button>
+						</div>
 					</div>
 				</div>
 				<button type="button" class="cc-pill-icon-btn" data-action="save" title="Save word" aria-label="Save word">
@@ -1023,6 +1135,7 @@
 		const highlightChevron = floatingPillContainer.querySelector('[data-action="highlight-mode"]');
 		const highlightModePanel = floatingPillContainer.querySelector("#cc-highlight-mode-panel");
 		const highlightModeBtns = floatingPillContainer.querySelectorAll(".cc-highlight-mode-btn");
+		const highlightColorBtns = floatingPillContainer.querySelectorAll(".cc-highlight-color-btn");
 		explainBtn.disabled = saveBtn.disabled = selectedText.length > 160;
 		if (explainBtn.disabled) explainBtn.title = "Select up to 160 characters to explain; longer selections can be highlighted.";
 
@@ -1032,12 +1145,32 @@
 			highlightMode = contentCoreHighlightMode;
 			highlightModeBtns.forEach(b => { b.dataset.active = String(b.dataset.mode === highlightMode); });
 		});
+		chrome.storage.local.get({ contentCoreHighlightColor: currentHighlightColor }, ({ contentCoreHighlightColor }) => {
+			currentHighlightColor = normalizeHighlightColor(contentCoreHighlightColor);
+			highlightColorBtns.forEach((btn) => {
+				btn.dataset.active = String(btn.dataset.color === currentHighlightColor);
+			});
+		});
+		highlightColorBtns.forEach((btn) => {
+			const colorId = normalizeHighlightColor(btn.dataset.color);
+			const swatch = HIGHLIGHT_COLORS[colorId];
+			btn.style.setProperty("--cc-highlight-fill", swatch.fill);
+			btn.style.setProperty("--cc-highlight-shadow", swatch.shadow);
+			btn.addEventListener("click", (e) => {
+				e.stopPropagation();
+				currentHighlightColor = colorId;
+				chrome.storage.local.set({ contentCoreHighlightColor: colorId });
+				highlightColorBtns.forEach((item) => {
+					item.dataset.active = String(item.dataset.color === colorId);
+				});
+			});
+		});
 
 		highlightBtn.addEventListener("click", () => {
 			if (highlightMode === "pointer") {
 				doPointerHighlight();
 			} else {
-				toggleHighlight();
+				void toggleHighlight();
 			}
 		});
 
@@ -1057,7 +1190,7 @@
 				if (highlightMode === "pointer") {
 					doPointerHighlight();
 				} else {
-					toggleHighlight();
+					void toggleHighlight();
 				}
 			});
 		});
@@ -1148,22 +1281,22 @@
 			floatingPillContainer.appendChild(card);
 			explainWord(card.querySelector(".cc-card-content"));
 
-			// If the pill is above the selection, flip card to open upward
-			// so it grows toward the top instead of falling off the bottom
+			// Keep the wider card and its pill inside the viewport.
 			if (floatingPillContainer.dataset.cardDir === "up") {
 				card.style.marginTop    = "0";
 				card.style.marginBottom = "8px";
 				card.style.order        = "-1"; // render card above pill in flex column
-
-				// After card renders, shift the whole container up by card height
-				// so the pill stays anchored to its original position
-				requestAnimationFrame(() => {
-					const cardH  = card.offsetHeight;
-					const curTop = parseFloat(floatingPillContainer.style.top) || 0;
-					const newTop = Math.max(56 + 10, curTop - cardH - 8);
-					floatingPillContainer.style.top = `${Math.round(newTop)}px`;
-				});
 			}
+			requestAnimationFrame(() => {
+				const viewportPadding = 16;
+				const rect = floatingPillContainer.getBoundingClientRect();
+				const maxTop = Math.max(56 + 10, window.innerHeight - rect.height - viewportPadding);
+				const top = Math.max(56 + 10, Math.min(maxTop, rect.top));
+				const maxLeft = Math.max(viewportPadding, window.innerWidth - rect.width - viewportPadding);
+				const left = Math.max(viewportPadding, Math.min(maxLeft, rect.left));
+				floatingPillContainer.style.top = `${Math.round(top)}px`;
+				floatingPillContainer.style.left = `${Math.round(left)}px`;
+			});
 		});
 
 		saveBtn.addEventListener("click", saveWord);
@@ -1564,6 +1697,7 @@
 		docTitle.title = file.name;
 		currentDocument = file.name;
 		pdfHighlights = [];
+		currentPdfFingerprint = "";
 		if (emptyState) emptyState.style.display = "none";
 
 		const loadingOverlay = document.querySelector("#pdf-loading-overlay");
@@ -1582,6 +1716,8 @@
 			// Copy the buffer BEFORE passing to PDF.js — getDocument() transfers
 			// (neuters) the ArrayBuffer to the worker, making it unusable afterwards.
 			const bufferForIdb = pdfRawData.slice(0);
+			currentPdfFingerprint = await computePdfFingerprint(bufferForIdb);
+			await loadStoredHighlightsForCurrentPdf();
 			pdfDoc = await pdfjs.getDocument({ data: pdfRawData }).promise;
 			totalPages = pdfDoc.numPages;
 			// Persist the pre-copy to IndexedDB so it survives tab navigation
@@ -1626,6 +1762,23 @@
 			docTitle.textContent = "Error loading PDF";
 			showToast(`Failed to load PDF: ${error.message}`);
 			isProgrammaticScroll = false;
+		}
+	}
+
+	async function loadPdfFromUrl(pdfUrl) {
+		try {
+			const response = await fetch(pdfUrl);
+			if (!response.ok) throw new Error(`PDF request failed (${response.status})`);
+			const blob = await response.blob();
+			const urlPath = new URL(pdfUrl).pathname;
+			const fileName = decodeURIComponent(urlPath.split("/").pop() || "Document.pdf").replace(/[^\w.\- ()]/g, "_");
+			const file = new File([blob], fileName.toLowerCase().endsWith(".pdf") ? fileName : `${fileName}.pdf`, {
+				type: "application/pdf"
+			});
+			await loadPdf(file);
+		} catch (error) {
+			console.error("[arth.find] Error downloading PDF URL:", error);
+			showToast(`Could not open PDF: ${error.message}`);
 		}
 	}
 
@@ -1928,7 +2081,12 @@
 
 	// ── Initialize
 	initEvents();
-	tryRestoreLastPdf();
+	const initialPdfUrl = new URLSearchParams(window.location.search).get("pdfUrl");
+	if (initialPdfUrl) {
+		loadPdfFromUrl(initialPdfUrl);
+	} else {
+		tryRestoreLastPdf();
+	}
 
 	// Clear stored PDF when the tab/window is closed or the user navigates away permanently.
 	// pagehide fires for both tab close and navigation; we only want to clear when the page
@@ -1942,4 +2100,3 @@
 		}
 	});
 })();
-

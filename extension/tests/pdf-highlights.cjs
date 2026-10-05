@@ -123,10 +123,22 @@ process.chdir(path.resolve(__dirname, "../.."));
       "text run should match the PDF font metrics",
     );
     await select("Crimson", 0, 7);
+    await page.locator('[data-action="highlight-mode"]').click();
+    assert.equal(
+      await page.locator(".cc-highlight-color-btn").count(),
+      5,
+      "highlight color picker renders all color choices",
+    );
+    await page.locator('.cc-highlight-color-btn[data-color="green"]').click();
     await highlight();
     assert.equal(
       await crimson.locator(".cc-pdf-highlight").innerText(),
       "Crimson",
+    );
+    assert.equal(
+      await crimson.locator(".cc-pdf-highlight").first().getAttribute("data-highlight-color"),
+      "green",
+      "selected color is applied to highlights",
     );
     const after = await crimson.boundingBox();
     assert.ok(
@@ -290,9 +302,34 @@ process.chdir(path.resolve(__dirname, "../.."));
       ),
       "Blue words align with selection",
     );
+    const restoredSnapshot = await page.evaluate(() =>
+      [...document.querySelectorAll(".cc-pdf-highlight")].map((mark) => ({
+        text: mark.textContent,
+        color: mark.getAttribute("data-highlight-color"),
+      })),
+    );
+    await page
+      .locator("#file-input")
+      .setInputFiles(path.join(__dirname, "fixtures", "selection-colors.pdf"));
+    await page.waitForFunction(
+      () =>
+        document.querySelectorAll(".pdf-page").length === 2 &&
+        !document.querySelector("#zoom-in").disabled,
+    );
+    const afterReloadSnapshot = await page.evaluate(() =>
+      [...document.querySelectorAll(".cc-pdf-highlight")].map((mark) => ({
+        text: mark.textContent,
+        color: mark.getAttribute("data-highlight-color"),
+      })),
+    );
+    assert.deepEqual(
+      afterReloadSnapshot,
+      restoredSnapshot,
+      "reopening the same PDF restores saved highlights and colors",
+    );
     assert.deepEqual(errors, []);
     console.log(
-      "PASS: real PDF text geometry, colored text and white-on-dark text, precise partial/multiline highlights, long selections, zoom, search, rotation, native mouse selection, pointer scrolling and element endpoints",
+      "PASS: real PDF text geometry, colored text and white-on-dark text, precise partial/multiline highlights, color selection, persistent same-document highlights, long selections, zoom, search, rotation, native mouse selection, pointer scrolling and element endpoints",
     );
   } finally {
     await browser.close();
