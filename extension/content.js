@@ -1380,6 +1380,8 @@
 			const newLeft = Math.max(SIDE_PAD, Math.min(window.innerWidth  - pillW - SIDE_PAD,  dragState.origLeft + dx));
 			pillContainer.style.top  = `${Math.round(newTop)}px`;
 			pillContainer.style.left = `${Math.round(newLeft)}px`;
+			const card = pillContainer.querySelector(".cc-dropdown-card");
+			if (card) positionMeaningCard(card);
 		}
 
 		dragHandle.addEventListener("mousedown", (e) => {

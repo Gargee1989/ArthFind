@@ -1131,6 +1131,8 @@
 			const newLeft = Math.max(SIDE_PAD, Math.min(window.innerWidth  - pillW - SIDE_PAD,  dragState.origLeft + dx));
 			floatingPillContainer.style.top  = `${Math.round(newTop)}px`;
 			floatingPillContainer.style.left = `${Math.round(newLeft)}px`;
+			const card = floatingPillContainer.querySelector(".cc-dropdown-card");
+			if (card) positionMeaningCard(card);
 		}
 
 		dragHandle.addEventListener("mousedown", (e) => {
