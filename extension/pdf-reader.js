@@ -820,6 +820,44 @@
 		return div.innerHTML;
 	}
 
+	function positionMeaningCard(card) {
+		if (!card || !floatingPillContainer?.contains(card)) return;
+		const viewportPadding = 12;
+		const gap = 10;
+		const pill = floatingPillContainer.querySelector(".cc-floating-pill");
+		if (!pill) return;
+
+		card.style.position = "fixed";
+		card.style.margin = "0";
+		card.style.order = "";
+		card.style.flex = "none";
+		card.style.maxHeight = `${Math.max(120, window.innerHeight - viewportPadding * 2)}px`;
+
+		const pillRect = pill.getBoundingClientRect();
+		const cardRect = card.getBoundingClientRect();
+		const maxLeft = Math.max(viewportPadding, window.innerWidth - cardRect.width - viewportPadding);
+		const maxTop = Math.max(viewportPadding, window.innerHeight - cardRect.height - viewportPadding);
+		const fits = (left, top) =>
+			left >= viewportPadding &&
+			top >= viewportPadding &&
+			left + cardRect.width <= window.innerWidth - viewportPadding &&
+			top + cardRect.height <= window.innerHeight - viewportPadding;
+		const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+		const candidates = [
+			{ left: pillRect.left, top: pillRect.bottom + gap },
+			{ left: pillRect.left, top: pillRect.top - cardRect.height - gap },
+			{ left: pillRect.right + gap, top: pillRect.top },
+			{ left: pillRect.left - cardRect.width - gap, top: pillRect.top }
+		];
+
+		const preferredFirst = floatingPillContainer.dataset.cardDir === "up"
+			? [candidates[1], candidates[0], candidates[2], candidates[3]]
+			: [candidates[0], candidates[1], candidates[2], candidates[3]];
+		const placement = preferredFirst.find(({ left, top }) => fits(left, top)) || preferredFirst[0];
+		card.style.left = `${Math.round(clamp(placement.left, viewportPadding, maxLeft))}px`;
+		card.style.top = `${Math.round(clamp(placement.top, viewportPadding, maxTop))}px`;
+	}
+
 	function doPointerHighlight() {
 		void toggleHighlight("pointer");
 	}
@@ -1281,22 +1319,11 @@
 			floatingPillContainer.appendChild(card);
 			explainWord(card.querySelector(".cc-card-content"));
 
-			// Keep the wider card and its pill inside the viewport.
-			if (floatingPillContainer.dataset.cardDir === "up") {
-				card.style.marginTop    = "0";
-				card.style.marginBottom = "8px";
-				card.style.order        = "-1"; // render card above pill in flex column
-			}
-			requestAnimationFrame(() => {
-				const viewportPadding = 16;
-				const rect = floatingPillContainer.getBoundingClientRect();
-				const maxTop = Math.max(56 + 10, window.innerHeight - rect.height - viewportPadding);
-				const top = Math.max(56 + 10, Math.min(maxTop, rect.top));
-				const maxLeft = Math.max(viewportPadding, window.innerWidth - rect.width - viewportPadding);
-				const left = Math.max(viewportPadding, Math.min(maxLeft, rect.left));
-				floatingPillContainer.style.top = `${Math.round(top)}px`;
-				floatingPillContainer.style.left = `${Math.round(left)}px`;
-			});
+			const cardObserver = typeof ResizeObserver === "function"
+				? new ResizeObserver(() => requestAnimationFrame(() => positionMeaningCard(card)))
+				: null;
+			cardObserver?.observe(card);
+			requestAnimationFrame(() => positionMeaningCard(card));
 		});
 
 		saveBtn.addEventListener("click", saveWord);
